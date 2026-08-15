@@ -150,13 +150,7 @@ a{cursor:pointer}
   <span class="pill" id="hpill">—</span>
 </div></header>
 
-<div id="conflict-bar" style="display:none"><div class="wrap">
-  <b>Кто-то сохранил раньше вас.</b> Ваши правки ещё не в общей базе.
-  <div class="row" style="gap:8px;margin-top:8px">
-    <button class="btn sm2" onclick="cloudResolve(true)">Оставить мои</button>
-    <button class="btn g sm2" onclick="cloudResolve(false)">Взять из базы</button>
-  </div>
-</div></div>
+<div id="conflict-bar" style="display:none"><div class="wrap" id="conflict-in"></div></div>
 
 <main class="wrap">
 
@@ -412,7 +406,7 @@ const SB={url:'https://ahjfdswfafiborxplndr.supabase.co',key:'sb_publishable_BKI
 const AKEY='masya_auth_v1', MKEY='masya_mode_v1';
 let AU=null;            // сессия: {access_token,refresh_token,expires_at,email}
 let MODE=null;          // 'cloud' | 'local' | null (ещё не выбрано)
-let CL={ver:0,busy:false,again:false,err:null,at:null,by:null,conflict:false,online:navigator.onLine};
+let CL={ver:0,busy:false,again:false,err:null,at:null,by:null,conflict:false,wipe:false,online:navigator.onLine};
 let pushTimer=null, pollTimer=null;
 
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
@@ -480,6 +474,14 @@ async function cloudPush(force){
  CL.busy=true;
  try{
   if(!await ensureToken()){CL.busy=false;return}
+  // страховка: пустая локальная копия не затирает непустую общую базу
+  const localEmpty=!((S.materials||[]).length||(S.recipes||[]).length);
+  if(localEmpty&&!force){
+   const cur=await cloudPull(true);
+   if(cur&&cur.data&&(((cur.data.materials||[]).length)||((cur.data.recipes||[]).length))){
+    CL.wipe=true; CL.busy=false; syncBadge(); return;
+   }
+  }
   let expect=CL.ver;
   if(force){const cur=await cloudPull(true); expect=cur?cur.version:CL.ver}
   const body={data:S,version:expect+1,updated_at:new Date().toISOString(),updated_by:whoAmI()};
@@ -1392,13 +1394,27 @@ function syncBadge(){
  const el=document.getElementById('hpill'); if(!el)return;
  if(MODE!=='cloud'){el.textContent=S.recipes.length+' изделий';el.className='pill';return}
  let t='общая база',c='pill';
- if(CL.conflict){t='нужно решить';c='pill warn'}
+ if(CL.wipe||CL.conflict){t='нужно решить';c='pill warn'}
  else if(CL.err||!navigator.onLine){t='нет связи';c='pill warn'}
  else if(CL.busy||pushTimer){t='сохраняю…'}
  else{t='общая база ✓'}
  el.textContent=t; el.className=c;
  const cb=document.getElementById('conflict-bar');
- if(cb)cb.style.display=CL.conflict?'':'none';
+ if(cb){
+  cb.style.display=(CL.conflict||CL.wipe)?'':'none';
+  const inner=document.getElementById('conflict-in');
+  if(inner&&CL.wipe)inner.innerHTML=`<b>Здесь пусто, а в общей базе есть данные.</b>
+    Ничего не перезаписала — иначе работа коллег пропала бы.
+    <div class="row" style="gap:8px;margin-top:8px">
+      <button class="btn sm2" onclick="cloudResolve(false)">Загрузить из базы</button>
+      <button class="btn g sm2" onclick="if(confirm('Очистить общую базу для всех? Отменить будет нельзя.')){CL.wipe=false;cloudPush(true).then(()=>{syncBadge();toast('База очищена')})}">Всё равно очистить</button>
+    </div>`;
+  else if(inner&&CL.conflict)inner.innerHTML=`<b>Кто-то сохранил раньше вас.</b> Ваши правки ещё не в общей базе.
+    <div class="row" style="gap:8px;margin-top:8px">
+      <button class="btn sm2" onclick="cloudResolve(true)">Оставить мои</button>
+      <button class="btn g sm2" onclick="cloudResolve(false)">Взять из базы</button>
+    </div>`;
+ }
 }
 function gateShow(){
  const g=document.getElementById('gate'); if(!g)return;
@@ -1447,7 +1463,7 @@ async function doGateLogin(){
 }
 function gateLocal(){MODE='local';lsSet(MKEY,'local');document.getElementById('gate').style.display='none';render();syncBadge()}
 function cloudResolve(mine){
- CL.conflict=false;
+ CL.conflict=false; CL.wipe=false;
  if(mine){cloudPush(true).then(()=>{toast('Ваша версия сохранена в общей базе');syncBadge()})}
  else{cloudPull(false).then(cur=>{if(cur){CL.ver=cur.version;S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});
    save(true);closeAll();render();syncBadge();toast('Загружена версия из общей базы')}})}
