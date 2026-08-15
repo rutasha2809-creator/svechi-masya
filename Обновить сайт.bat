@@ -1,91 +1,106 @@
 @echo off
 chcp 65001 >nul
-setlocal
 cd /d "%~dp0"
 
-echo.
-echo   ОБНОВЛЕНИЕ САЙТА "Свечи Мася"
+echo ============================================
+echo   OBNOVLENIE SAYTA - Svechi Masya
 echo   https://rutasha2809-creator.github.io/svechi-masya/
-echo.
+echo ============================================
 
+echo.
+echo === Step 0: Check git ===
 where git >nul 2>&1
-if errorlevel 1 (
-  echo   [!] Git не установлен.
-  echo.
-  echo   Скачайте его здесь: https://git-scm.com/download/win
-  echo   Установите со всеми настройками по умолчанию,
-  echo   затем запустите этот файл снова.
-  echo.
-  pause
-  exit /b 1
+if %errorlevel% neq 0 (
+    echo ERROR: Git ne ustanovlen.
+    echo Skachayte: https://git-scm.com/download/win
+    echo Ustanovite s nastroykami po umolchaniyu i zapustite etot fayl snova.
+    pause
+    exit /b 1
 )
+echo OK
 
+echo.
+echo === Step 1: Setup (bezopasno zapuskat kazhdyy raz) ===
 if not exist ".git" (
-  echo   Первый запуск. Подключаю папку к GitHub...
-  git init >nul 2>&1
-  git branch -M main >nul 2>&1
-  git remote add origin https://github.com/rutasha2809-creator/svechi-masya.git >nul 2>&1
-  git config user.name "rutasha2809-creator"
-  git config user.email "rutasha2809-creator@users.noreply.github.com"
-  git config core.quotepath false
-  git config i18n.commitEncoding utf-8
-  echo   Забираю то, что уже лежит на GitHub...
-  git fetch origin
-  if errorlevel 1 goto :nonet
-  git reset --mixed origin/main >nul
-  git branch --set-upstream-to=origin/main main >nul 2>&1
-  echo   Папка подключена.
-  echo.
+    git init
+    git branch -M main
+    echo Repozitoriy sozdan
+)
+git remote get-url origin >nul 2>&1
+if %errorlevel% neq 0 (
+    git remote add origin https://github.com/rutasha2809-creator/svechi-masya.git
+    echo Remote origin dobavlen
+)
+git config user.name "rutasha2809-creator"
+git config user.email "rutasha2809-creator@users.noreply.github.com"
+git config core.quotepath false
+git config i18n.commitEncoding utf-8
+git rev-parse --verify HEAD >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Pervyy zapusk - zabiraem to, chto uzhe na GitHub...
+    git fetch origin
+    if %errorlevel% neq 0 (
+        echo ERROR: net svyazi s GitHub. Proverte internet.
+        pause
+        exit /b 1
+    )
+    git reset --mixed origin/main
+)
+echo OK
+
+echo.
+echo === Step 2: Remove git lock files ===
+if exist ".git\index.lock" (
+    del /f ".git\index.lock"
+    echo Done: index.lock removed
+) else (
+    echo OK: no index.lock found
+)
+if exist ".git\HEAD.lock" (
+    del /f ".git\HEAD.lock"
+    echo Done: HEAD.lock removed
+) else (
+    echo OK: no HEAD.lock found
 )
 
-echo   Смотрю, что изменилось...
+echo.
+echo === Step 3: Stage all changes ===
 git add -A
-git diff --cached --quiet
-if not errorlevel 1 (
-  echo.
-  echo   Изменений нет. На сайте уже свежая версия.
-  goto :done
+if %errorlevel% neq 0 (
+    echo ERROR: git add ne otrabotal - smotrite soobshchenie vyshe
+    pause
+    exit /b 1
+)
+git status --short
+echo Done
+
+echo.
+echo === Step 4: Commit ===
+git commit -m "Update site"
+if %errorlevel% neq 0 ( echo Nothing new to commit, pushing existing commits... )
+
+echo.
+echo === Step 5: Pull remote changes ===
+git pull --rebase origin main
+if %errorlevel% neq 0 (
+    echo ERROR: konflikt s versiey na GitHub.
+    echo Otmenit obedinenie: git rebase --abort
+    pause
+    exit /b 1
 )
 
 echo.
-git diff --cached --name-status
-echo.
-git commit -m "Обновление сайта %date% %time%" >nul
-if errorlevel 1 goto :err
-
-echo   Забираю правки с GitHub, если они были...
-git pull --rebase origin main
-if errorlevel 1 goto :conflict
-
-echo   Отправляю на GitHub...
-git push origin main
-if errorlevel 1 goto :err
+echo === Step 6: Push to GitHub ===
+git push origin HEAD:main
+if %errorlevel% neq 0 (
+    echo ERROR at push - check internet/GitHub credentials
+    echo Esli otkrylos okno vhoda v GitHub - voydite i zapustite fayl snova.
+    pause
+    exit /b 1
+)
 
 echo.
-echo   ГОТОВО. Сайт обновится в течение минуты:
-echo   https://rutasha2809-creator.github.io/svechi-masya/
-goto :done
-
-:nonet
-echo.
-echo   [!] Не получилось связаться с GitHub.
-echo   Проверьте интернет. Если открылось окно входа - войдите
-echo   в свою учётную запись GitHub и запустите файл снова.
-goto :done
-
-:conflict
-echo.
-echo   [!] На GitHub есть правки, которые конфликтуют с локальными.
-echo   Ничего не сломалось, но разобрать нужно вручную.
-echo   Отменить объединение: git rebase --abort
-goto :done
-
-:err
-echo.
-echo   [!] Что-то пошло не так - смотрите сообщение выше.
-echo   Если это первый запуск, могло открыться окно входа в GitHub:
-echo   войдите и запустите файл снова.
-
-:done
-echo.
+echo === DONE! Podozhdite ~1 minutu, potom otkroyte sayt ===
+echo https://rutasha2809-creator.github.io/svechi-masya/
+echo Esli vidite staruyu versiyu - nazhmite Ctrl+Shift+R
 pause
