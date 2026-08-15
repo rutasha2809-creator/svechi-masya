@@ -205,7 +205,7 @@ a{cursor:pointer}
     </div>
     <div class="grid2">
       <label class="f"><span>Электроэнергия, ₽/кВт·ч</span><input id="st-kwt" type="number" step="0.1" inputmode="decimal"></label>
-      <label class="f"><span>«На исходе» — меньше % упаковки</span><input id="st-low" type="number" inputmode="numeric"></label>
+      <label class="f"><span>«На исходе» — меньше % от закупки</span><input id="st-low" type="number" inputmode="numeric"></label>
     </div>
     <button class="btn full" onclick="saveSettings()">Сохранить</button>
   </div>
@@ -495,7 +495,7 @@ async function cloudPush(force){
 }
 function cloudSchedule(){
  if(MODE!=='cloud')return;
- clearTimeout(pushTimer); pushTimer=setTimeout(()=>cloudPush(),1200); syncBadge();
+ clearTimeout(pushTimer); pushTimer=setTimeout(()=>{pushTimer=null;cloudPush()},1200); syncBadge();
 }
 /* ---- лёгкая проверка: только номер версии, без данных ---- */
 async function cloudVersion(){
@@ -851,11 +851,12 @@ function delLine(row){D.l=D.l.filter(x=>x.r!==row);back()}
 function editPrice(id){push(priceView.bind(null,id))}
 function priceView(id){const m=MAT(id);if(!m)return head('Материал')+'';
  return head('Цена: '+m.n,'Изменится во всех изделиях')+`<div class="wrap" style="padding-top:12px"><div class="card">
+  <p class="xs mut" style="margin:0 0 10px">Сколько взяли и сколько заплатили — цена за единицу посчитается сама.</p>
   <div class="grid2">
-   <label class="f"><span>В упаковке, ${esc(m.u)}</span><input id="p-q" type="number" step="any" value="${m.pq??''}"></label>
-   <label class="f"><span>Цена упаковки, ₽</span><input id="p-s" type="number" step="any" value="${m.pp??''}"></label>
+   <label class="f"><span>Купили, ${esc(m.u)}</span><input id="p-q" type="number" step="any" placeholder="1000" value="${m.pq??''}"></label>
+   <label class="f"><span>Заплатили, ₽</span><input id="p-s" type="number" step="any" placeholder="2800" value="${m.pp??''}"></label>
   </div>
-  <button class="btn g sm2" style="margin-bottom:12px" onclick="var q=+document.getElementById('p-q').value,s=+document.getElementById('p-s').value;if(q>0){document.getElementById('p-u').value=(s/q).toFixed(4);toast('Посчитано')}else toast('Укажите количество в упаковке')">Посчитать цену за ${esc(m.u)}</button>
+  <button class="btn g sm2 full" style="margin-bottom:12px" onclick="var q=+document.getElementById('p-q').value,s=+document.getElementById('p-s').value;if(q>0&&s>0){document.getElementById('p-u').value=(s/q).toFixed(4);toast('Посчитано')}else toast('Заполните оба поля')">Посчитать цену за 1 ${esc(m.u)}</button>
   <label class="f"><span>Цена за 1 ${esc(m.u)}, ₽</span><input id="p-u" type="number" step="any" value="${m.p}"></label>
   <button class="btn full" onclick="savePrice(${jq(id)})">Сохранить цену</button>
  </div></div>`}
@@ -878,9 +879,15 @@ function renderStock(){
  const anyStock=S.materials.some(m=>(+m.s||0)>0);
  if(onlyLow)rows=rows.filter(m=>isLow(m)||(+m.s||0)<=0);
  const lowN=S.materials.filter(m=>used.has(m.id)&&isLow(m)).length;
+ const real=S.materials.filter(m=>!isPH(m));
+ const totalVal=real.reduce((a,m)=>a+((+m.s||0)*(+m.p||0)),0);
+ const noPrice=real.filter(m=>(+m.p||0)<=0).length;
  document.getElementById('stock-sum').innerHTML=
-  `<span class="tag">в рецептах: ${used.size}</span> <span class="tag">всего в справочнике: ${S.materials.filter(m=>!isPH(m)).length}</span>
-   ${lowN?`<span class="tag warn">на исходе: ${lowN}</span>`:''}`+
+  (totalVal>0?`<div class="card tight" style="width:100%;margin:0 0 8px;display:flex;align-items:baseline;gap:10px">
+     <span class="sm mut">Запас на складе</span><span class="sp"></span><b class="big num" style="font-size:20px">${fmt(totalVal,0)} ₽</b></div>`:'')+
+  `<span class="tag">в рецептах: ${used.size}</span> <span class="tag">всего в справочнике: ${real.length}</span>
+   ${lowN?`<span class="tag warn">на исходе: ${lowN}</span>`:''}
+   ${noPrice?`<span class="tag warn">без цены: ${noPrice}</span>`:''}`+
    (!anyStock?`<div class="card tight sm mut" style="width:100%;margin:6px 0 0">Остатков пока нет. Нажмите «Внести закупку» — и в изделиях появится подсказка, на сколько штук хватит материалов.</div>`:'');
  const ck=document.getElementById('ck-used'); if(ck)ck.checked=onlyUsed;
  const total=rows.length; rows=rows.slice(0,300);
@@ -895,42 +902,52 @@ function renderStock(){
  }
  document.getElementById('list-mat').innerHTML=rows.length?rows.map(m=>{
   const st=+m.s||0;
+  const pr=+m.p||0, val=st*pr;
   const badge=!anyStock?'':(st<=0?'<span class="tag">нет на складе</span>':(isLow(m)?`<span class="tag warn">${qfmt(st)} ${esc(m.u)}</span>`:`<span class="tag ok">${qfmt(st)} ${esc(m.u)}</span>`));
   return `<div class="item" onclick="openMat(${jq(m.id)})"><div class="row">
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
-   <div class="xs mut" style="margin-top:3px">${esc(SEED.groups[m.g]||m.g)} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
-   ${badge}</div></div>`}).join('')+(total>300?`<p class="xs mut" style="text-align:center">Показано 300 из ${total}</p>`:'')
+   <div class="xs mut" style="margin-top:3px">${esc(SEED.groups[m.g]||m.g)} · ${pr>0?fmt(pr,pr<1?3:2)+' ₽/'+esc(m.u):'<span style="color:var(--warn)">цена не задана</span>'}</div></div>
+   <div style="text-align:right">${badge}${val>0?`<div class="xs mut num" style="margin-top:4px">на ${fmt(val,0)} ₽</div>`:''}</div>
+   </div></div>`}).join('')+(total>300?`<p class="xs mut" style="text-align:center">Показано 300 из ${total}</p>`:'')
   :`<div class="empty">Ничего не найдено${onlyUsed?' среди тех, что используются в рецептах':''}.
    ${onlyUsed?'<br><button class="btn g sm2" style="margin-top:12px" onclick="onlyUsed=false;renderStock()">Показать весь справочник</button>':''}</div>`;
 }
 function isLow(m){const st=+m.s||0,mn=+m.min||0;if(mn>0)return st<=mn;return st>0&&m.pq&&st<m.pq*(S.settings.low/100)}
-function openMat(id){push(matView.bind(null,id))}
+// порог: если свой не задан — считаем от объёма последней закупки
+function openMat(id){push(matView.bind(null,id));setTimeout(mmCalc,30)}
 function matView(id){
  const m=MAT(id);if(!m)return head('Материал')+'<div class="wrap"><div class="empty">Не найден</div></div>';
  const used=S.recipes.filter(r=>r.l.some(l=>l.m===id));
+ const _val=(+m.s||0)*(+m.p||0);
  return head(m.n,SEED.groups[m.g])+`<div class="wrap" style="padding-top:12px">
  <div class="kpi" style="margin-bottom:12px">
   <div><div class="l">Остаток</div><div class="v num">${qfmt(m.s||0)} <span class="sm mut">${esc(m.u)}</span></div></div>
-  <div><div class="l">Цена</div><div class="v num">${fmt(m.p,m.p<1?3:2)} <span class="sm mut">₽/${esc(m.u)}</span></div></div>
+  <div><div class="l">Цена</div><div class="v num">${(+m.p||0)>0?fmt(m.p,m.p<1?3:2)+' <span class="sm mut">₽/'+esc(m.u)+'</span>':'<span class="sm" style="color:var(--warn)">не задана</span>'}</div></div>
  </div>
+ ${_val>0?`<div class="card tight row" style="margin-bottom:12px"><span class="sm mut">Лежит на складе на сумму</span><span class="sp"></span><b class="num">${fmt(_val,2)} ₽</b></div>`:''}
+ ${(+m.p||0)<=0?`<div class="card tight sm warnbox" style="margin-bottom:12px">Цена не задана — материал считается бесплатным во всех изделиях. Впишите цену за единицу ниже, либо укажите сколько купили и сколько заплатили и нажмите «Пересчитать цену».</div>`:''}
  <button class="btn full" style="margin-bottom:12px" onclick="openBuy(${jq(id)})">Внести закупку этого материала</button>
  <div class="card"><h3 class="sm" style="margin-bottom:10px">Карточка материала</h3>
   <label class="f"><span>Название</span><input id="m-n" value="${esc(m.n)}"></label>
   <div class="grid2">
-   <label class="f"><span>Группа</span><select id="m-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(SEED.groups[g])}</option>`).join('')}</select></label>
-   <label class="f"><span>Единица</span><select id="m-u">${['г','мл','см','шт','исп.'].map(u=>`<option ${u===m.u?'selected':''}>${u}</option>`).join('')}</select></label>
+   <label class="f"><span>Раздел справочника</span><select id="m-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(SEED.groups[g])}</option>`).join('')}</select></label>
+   <label class="f"><span>Считаем в</span><select id="m-u" onchange="mmCalc()">${UNITS.map(x=>`<option ${x===m.u?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
+  <div class="hsep"></div>
+  <h3 class="sm" style="margin-bottom:4px">Почём обходится</h3>
+  <p class="xs mut" style="margin:0 0 10px">Впишите, сколько взяли и сколько за это заплатили — цена за единицу посчитается сама. Или задайте её вручную ниже.</p>
   <div class="grid2">
-   <label class="f"><span>Остаток</span><input id="m-s" type="number" step="any" value="${m.s||0}"></label>
+   <label class="f"><span>Купили, <i id="m-u1">${esc(m.u)}</i></span><input id="m-pq" type="number" step="any" placeholder="1000" value="${m.pq??''}" oninput="mmCalc()"></label>
+   <label class="f"><span>Заплатили, ₽</span><input id="m-pp" type="number" step="any" placeholder="2800" value="${m.pp??''}" oninput="mmCalc()"></label>
+  </div>
+  <div class="card tight sm" id="m-hint" style="background:var(--soft);margin-bottom:12px"></div>
+  <label class="f"><span>Цена за 1 <i id="m-u2">${esc(m.u)}</i>, ₽</span><input id="m-p" type="number" step="any" value="${m.p}"></label>
+  <div class="hsep"></div>
+  <div class="grid2">
+   <label class="f"><span>Остаток, <i id="m-u3">${esc(m.u)}</i></span><input id="m-s" type="number" step="any" value="${m.s||0}"></label>
    <label class="f"><span>Предупреждать ниже</span><input id="m-min" type="number" step="any" value="${m.min||0}"></label>
   </div>
-  <div class="grid2">
-   <label class="f"><span>В упаковке</span><input id="m-pq" type="number" step="any" value="${m.pq??''}"></label>
-   <label class="f"><span>Цена упаковки, ₽</span><input id="m-pp" type="number" step="any" value="${m.pp??''}"></label>
-  </div>
-  <label class="f"><span>Цена за 1 ${esc(m.u)}, ₽</span><input id="m-p" type="number" step="any" value="${m.p}"></label>
-  <div class="grid2"><button class="btn" onclick="matSave(${jq(id)})">Сохранить</button>
-  <button class="btn g" onclick="var q=+document.getElementById('m-pq').value,s=+document.getElementById('m-pp').value;if(q>0){document.getElementById('m-p').value=(s/q).toFixed(4);toast('Посчитано')}else toast('Заполните упаковку')">Цена из упаковки</button></div>
+  <button class="btn full" onclick="matSave(${jq(id)})">Сохранить</button>
  </div>
  <div class="card"><h3 class="sm" style="margin-bottom:8px">Используется в изделиях: ${used.length}</h3>
   ${used.length?used.slice(0,40).map(r=>`<div class="row sm" style="padding:5px 0"><span>${esc(r.n)}</span><span class="sp"></span>
@@ -938,6 +955,20 @@ function matView(id){
   ${used.length?'<p class="xs mut" style="margin:10px 0 0">Пока материал используется хотя бы в одном изделии, удалить его нельзя — сначала уберите из рецептов.</p>':
    `<button class="btn d full" style="margin-top:10px" onclick="delMat(${jq(id)})">Удалить материал</button>`}
  </div><div style="height:8px"></div></div>`}
+function mmCalc(){
+ const uu=document.getElementById('m-u'); if(!uu)return;
+ const u=uu.value;
+ ['m-u1','m-u2','m-u3'].forEach(k=>{const e=document.getElementById(k);if(e)e.textContent=u});
+ const q=parseFloat(document.getElementById('m-pq').value)||0;
+ const s=parseFloat(document.getElementById('m-pp').value)||0;
+ const h=document.getElementById('m-hint'), pe=document.getElementById('m-p');
+ if(q>0&&s>0){const p=s/q;
+  h.innerHTML=`Получается <b>${fmt(p,p<1?3:2)} ₽ за 1 ${esc(u)}</b> — нажмите «Сохранить», чтобы применить.`;
+  if(pe&&(!(+pe.value>0)))pe.value=p.toFixed(4);
+ }else if(s>0&&!q){h.innerHTML='<span style="color:var(--warn)">Не хватает количества: за сколько '+esc(u)+' вы заплатили эти '+fmt(s,0)+' ₽?</span>'}
+ else if(q>0&&!s){h.innerHTML='<span style="color:var(--warn)">Не хватает суммы: сколько заплатили за '+qfmt(q)+' '+esc(u)+'?</span>'}
+ else{h.textContent='Например: купили 1000 г за 2800 ₽ — получится 2,80 ₽ за грамм.'}
+}
 function matSave(id){const m=MAT(id);
  m.n=document.getElementById('m-n').value.trim()||m.n;
  m.g=document.getElementById('m-g').value; m.u=document.getElementById('m-u').value;
@@ -952,20 +983,38 @@ const UNITS=['г','кг','мл','л','см','м','шт','исп.'];
 function newMat(){push(newMatView)}
 function newMatView(){
  return head('Новый материал','Заполните и нажмите «Создать»')+`<div class="wrap" style="padding-top:12px"><div class="card">
-  <label class="f"><span>Название</span><input id="n-n" placeholder="Например: Соевый воск GW 464"></label>
+  <label class="f"><span>Что это за материал</span><input id="n-n" placeholder="Например: Соевый воск GW 464"></label>
   <div class="grid2">
-   <label class="f"><span>Группа</span><select id="n-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}">${esc(SEED.groups[g])}</option>`).join('')}</select></label>
-   <label class="f"><span>В чём измеряете</span><select id="n-u">${UNITS.map(u=>`<option ${u==='г'?'selected':''}>${u}</option>`).join('')}</select></label>
+   <label class="f"><span>Раздел справочника</span><select id="n-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}">${esc(SEED.groups[g])}</option>`).join('')}</select></label>
+   <label class="f"><span>Считаем в</span><select id="n-u" onchange="nmCalc()">${UNITS.map(x=>`<option ${x==='г'?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
   <div class="hsep"></div>
-  <p class="xs mut" style="margin:0 0 10px">Введите сколько в упаковке и её цену — стоимость единицы посчитается сама.</p>
+  <h3 class="sm" style="margin-bottom:4px">Сколько купили</h3>
+  <p class="xs mut" style="margin:0 0 10px">Вес или количество из чека и уплаченная сумма. Цену за единицу приложение посчитает само.</p>
   <div class="grid2">
-   <label class="f"><span>В упаковке</span><input id="n-pq" type="number" step="any" placeholder="1000"></label>
-   <label class="f"><span>Цена упаковки, ₽</span><input id="n-pp" type="number" step="any" placeholder="1200"></label>
+   <label class="f"><span>Количество</span><input id="n-pq" type="number" step="any" placeholder="3000" oninput="nmCalc()"></label>
+   <label class="f"><span>Заплатили, ₽</span><input id="n-pp" type="number" step="any" placeholder="4500" oninput="nmCalc()"></label>
   </div>
-  <label class="f"><span>Остаток на складе</span><input id="n-s" type="number" step="any" placeholder="0"></label>
+  <div class="card tight sm" id="n-hint" style="background:var(--soft);margin-bottom:12px">Заполните два поля выше — покажу цену за единицу.</div>
+  <label class="f"><span>Цена за единицу, ₽ <span class="mut" id="n-ulab"></span></span><input id="n-p" type="number" step="any" placeholder="0"></label>
+  <label class="f"><span>Сразу положить на склад <span class="mut" id="n-ulab2"></span></span><input id="n-s" type="number" step="any" placeholder="0"></label>
+  <p class="xs mut" style="margin:-4px 0 12px">Если это уже купленный товар — оставьте количество, оно станет остатком.</p>
   <button class="btn full" onclick="createMat()">Создать материал</button>
  </div></div>`}
+function nmCalc(){
+ const u=document.getElementById('n-u').value;
+ const q=parseFloat(document.getElementById('n-pq').value)||0;
+ const s=parseFloat(document.getElementById('n-pp').value)||0;
+ const lab=document.getElementById('n-ulab'), lab2=document.getElementById('n-ulab2');
+ if(lab)lab.textContent='(за 1 '+u+')'; if(lab2)lab2.textContent='('+u+')';
+ const h=document.getElementById('n-hint');
+ if(q>0&&s>0){
+  const p=s/q;
+  h.innerHTML=`Получается <b>${fmt(p,p<1?3:2)} ₽ за 1 ${esc(u)}</b>`;
+  const pe=document.getElementById('n-p'); if(pe&&!pe.dataset.touched)pe.value=p.toFixed(4);
+  const se=document.getElementById('n-s'); if(se&&!se.dataset.touched)se.value=q;
+ }else h.textContent='Заполните два поля выше — покажу цену за единицу.';
+}
 function createMat(){
  const n=(document.getElementById('n-n').value||'').trim();
  if(!n)return toast('Введите название');
@@ -973,10 +1022,11 @@ function createMat(){
  const pq=parseFloat(document.getElementById('n-pq').value)||null;
  const pp=parseFloat(document.getElementById('n-pp').value)||null;
  const st=parseFloat(document.getElementById('n-s').value)||0;
- const p=(pq&&pp!=null)?pp/pq:0;
+ let p=parseFloat(document.getElementById('n-p').value);
+ if(!isFinite(p)||p<=0) p=(pq&&pp!=null)?pp/pq:0;
  const id='usr::'+Date.now()+'::'+n;
  S.materials.push({id,g,n,u,pq,pp,p,s:st,min:0,x:{}});
- save();back();toast('Материал создан');render()}
+ save();back();toast(p>0?'Материал создан':'Создан. Цена не задана — впишите её в карточке');render()}
 
 /* ---- закупка ---- */
 let buyRows=[];
