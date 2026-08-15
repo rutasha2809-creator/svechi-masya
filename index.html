@@ -409,6 +409,10 @@ const isPH=m=>/^(нет|-|—)$/i.test(String(m.n||'').trim());
 function nice(t){t=String(t||'').trim(); if(NICE[t])return NICE[t];
  if(t===t.toUpperCase()&&t.length>3)t=t[0]+t.slice(1).toLowerCase();
  return t?t[0].toUpperCase()+t.slice(1):t}
+// строка -> безопасный JS-литерал внутри HTML-атрибута в двойных кавычках
+function jq(v){return "'"+String(v==null?'':v)
+ .replace(/\\/g,'\\\\').replace(/'/g,"\\'")
+ .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+"'"}
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dark=()=>matchMedia('(prefers-color-scheme:dark)').matches;
 const col=k=>dark()?CG[k].d:CG[k].l;
@@ -438,8 +442,8 @@ function pickRender(title){
  return head(title,'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
  <input id="pk-q" placeholder="Начните вводить название" value="${esc(pickState.q)}" oninput="pickState.q=this.value;paint();setTimeout(()=>{const e=document.getElementById('pk-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)},0)"></div>
- <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group='${g}';paint()">${g==='все'?'все группы':esc(SEED.groups[g])}</div>`).join('')}</div>
- <div class="list">${rows.map(m=>`<div class="item" onclick="__pick('${esc(m.id).replace(/'/g,"\\'")}');back()">
+ <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?'все группы':esc(SEED.groups[g])}</div>`).join('')}</div>
+ <div class="list">${rows.map(m=>`<div class="item" onclick="__pick(${jq(m.id)});back()">
    <div class="row"><div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
    <div class="xs mut">${esc(SEED.groups[m.g]||m.g)} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
    ${(+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:''}</div></div>`).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
@@ -450,7 +454,7 @@ function pickRender(title){
 function renderProd(){
  const cats=['все',...new Set(S.recipes.map(r=>r.c))];
  document.getElementById('chips-prod').innerHTML=cats.map(c=>
-  `<div class="chip ${c===fProd?'on':''}" onclick="fProd=${JSON.stringify(c)};renderProd()">${esc(c)}</div>`).join('');
+  `<div class="chip ${c===fProd?'on':''}" onclick="fProd=${jq(c)};renderProd()">${esc(c)}</div>`).join('');
  const q=(document.getElementById('q-prod').value||'').toLowerCase();
  const anyStock=S.materials.some(m=>(+m.s||0)>0);
  const rows=S.recipes.filter(r=>(fProd==='все'||r.c===fProd)&&r.n.toLowerCase().includes(q));
@@ -541,7 +545,7 @@ function lineHtml(x){
  return `<div class="lrow"><div ${clickable?`onclick="editLine(${x.row})" style="cursor:pointer"`:''}>
   <div class="n2">${esc(nice(x.lb))}</div>
   <div class="s2">${esc(x.name||'—')}${x.q!=null?` · ${qfmt(x.q)} ${esc(x.unit||'')}`:''}</div></div>
-  <div style="text-align:right">${x.up!=null&&x.mid?`<a class="prc num" onclick="event.stopPropagation();editPrice('${esc(x.mid).replace(/'/g,"\\'")}')">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</a>`:''}
+  <div style="text-align:right">${x.up!=null&&x.mid?`<a class="prc num" onclick="event.stopPropagation();editPrice(${jq(x.mid)})">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</a>`:''}
   <div class="c2">${x.c?fmt(x.c,2)+' ₽':'—'}</div></div></div>`}
 function saveDraft(){const i=S.recipes.findIndex(x=>x.id===Did);S.recipes[i]=JSON.parse(JSON.stringify(D));save();toast('Сохранено');paint()}
 function dupRecipe(){const c=JSON.parse(JSON.stringify(D));c.id='r'+Date.now();c.n=D.n+' (копия)';delete c.xl;
@@ -568,7 +572,7 @@ function lineView(row){
    <div class="row"><div style="flex:1;min-width:0"><div class="t">${m?esc(m.n):'не выбран'}</div>
    <div class="xs mut">${m?esc(SEED.groups[m.g])+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u):'нажмите, чтобы выбрать'}</div></div>
    <span class="tag">выбрать</span></div></div>
-  ${m?`<button class="btn g sm2" style="margin-bottom:12px" onclick="editPrice('${esc(l.m).replace(/'/g,"\\'")}')">Изменить цену этого материала</button>`:''}
+  ${m?`<button class="btn g sm2" style="margin-bottom:12px" onclick="editPrice(${jq(l.m)})">Изменить цену этого материала</button>`:''}
   <label class="f"><span>Сколько идёт на изделие</span>
    <select onchange="setRule(${row},this.value)">${QTYRULES.map(o=>`<option value="${o.v}" ${o.v===cur?'selected':''}>${o.n}</option>`).join('')}</select></label>
   ${cur==='const'?`<label class="f"><span>Количество${m?', '+esc(UNITNAME[m.u]||m.u):''}</span>
@@ -599,7 +603,7 @@ function priceView(id){const m=MAT(id);if(!m)return head('Материал')+'';
   </div>
   <button class="btn g sm2" style="margin-bottom:12px" onclick="var q=+document.getElementById('p-q').value,s=+document.getElementById('p-s').value;if(q>0){document.getElementById('p-u').value=(s/q).toFixed(4);toast('Посчитано')}else toast('Укажите количество в упаковке')">Посчитать цену за ${esc(m.u)}</button>
   <label class="f"><span>Цена за 1 ${esc(m.u)}, ₽</span><input id="p-u" type="number" step="any" value="${m.p}"></label>
-  <button class="btn full" onclick="savePrice('${esc(id).replace(/'/g,"\\'")}')">Сохранить цену</button>
+  <button class="btn full" onclick="savePrice(${jq(id)})">Сохранить цену</button>
  </div></div>`}
 function savePrice(id){const m=MAT(id);
  m.pq=parseFloat(document.getElementById('p-q').value)||null;
@@ -613,7 +617,7 @@ function renderStock(){
  const used=usedIds();
  const gs=['все',...Object.keys(SEED.groups).filter(g=>S.materials.some(m=>m.g===g))];
  document.getElementById('chips-mat').innerHTML=gs.map(g=>
-  `<div class="chip ${g===fMat?'on':''}" onclick="fMat='${g}';renderStock()">${g==='все'?'все':esc(SEED.groups[g])}</div>`).join('');
+  `<div class="chip ${g===fMat?'on':''}" onclick="fMat=${jq(g)};renderStock()">${g==='все'?'все':esc(SEED.groups[g])}</div>`).join('');
  const q=(document.getElementById('q-mat').value||'').toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(fMat==='все'||m.g===fMat)&&m.n.toLowerCase().includes(q));
  if(onlyUsed)rows=rows.filter(m=>used.has(m.id));
@@ -628,7 +632,7 @@ function renderStock(){
  document.getElementById('list-mat').innerHTML=rows.length?rows.map(m=>{
   const st=+m.s||0;
   const badge=!anyStock?'':(st<=0?'<span class="tag">нет на складе</span>':(isLow(m)?`<span class="tag warn">${qfmt(st)} ${esc(m.u)}</span>`:`<span class="tag ok">${qfmt(st)} ${esc(m.u)}</span>`));
-  return `<div class="item" onclick="openMat('${esc(m.id).replace(/'/g,"\\'")}')"><div class="row">
+  return `<div class="item" onclick="openMat(${jq(m.id)})"><div class="row">
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
    <div class="xs mut" style="margin-top:3px">${esc(SEED.groups[m.g]||m.g)} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
    ${badge}</div></div>`}).join('')+(total>300?`<p class="xs mut" style="text-align:center">Показано 300 из ${total}</p>`:'')
@@ -644,7 +648,7 @@ function matView(id){
   <div><div class="l">Остаток</div><div class="v num">${qfmt(m.s||0)} <span class="sm mut">${esc(m.u)}</span></div></div>
   <div><div class="l">Цена</div><div class="v num">${fmt(m.p,m.p<1?3:2)} <span class="sm mut">₽/${esc(m.u)}</span></div></div>
  </div>
- <button class="btn full" style="margin-bottom:12px" onclick="openBuy('${esc(id).replace(/'/g,"\\'")}')">Внести закупку этого материала</button>
+ <button class="btn full" style="margin-bottom:12px" onclick="openBuy(${jq(id)})">Внести закупку этого материала</button>
  <div class="card"><h3 class="sm" style="margin-bottom:10px">Карточка материала</h3>
   <label class="f"><span>Название</span><input id="m-n" value="${esc(m.n)}"></label>
   <div class="grid2">
@@ -660,14 +664,14 @@ function matView(id){
    <label class="f"><span>Цена упаковки, ₽</span><input id="m-pp" type="number" step="any" value="${m.pp??''}"></label>
   </div>
   <label class="f"><span>Цена за 1 ${esc(m.u)}, ₽</span><input id="m-p" type="number" step="any" value="${m.p}"></label>
-  <div class="grid2"><button class="btn" onclick="matSave('${esc(id).replace(/'/g,"\\'")}')">Сохранить</button>
+  <div class="grid2"><button class="btn" onclick="matSave(${jq(id)})">Сохранить</button>
   <button class="btn g" onclick="var q=+document.getElementById('m-pq').value,s=+document.getElementById('m-pp').value;if(q>0){document.getElementById('m-p').value=(s/q).toFixed(4);toast('Посчитано')}else toast('Заполните упаковку')">Цена из упаковки</button></div>
  </div>
  <div class="card"><h3 class="sm" style="margin-bottom:8px">Используется в изделиях: ${used.length}</h3>
   ${used.length?used.slice(0,40).map(r=>`<div class="row sm" style="padding:5px 0"><span>${esc(r.n)}</span><span class="sp"></span>
    <a class="xs" onclick="openRecipe('${r.id}')">открыть</a></div>`).join(''):'<div class="sm mut">Нигде не используется — можно спокойно удалить.</div>'}
   ${used.length?'<p class="xs mut" style="margin:10px 0 0">Пока материал используется хотя бы в одном изделии, удалить его нельзя — сначала уберите из рецептов.</p>':
-   `<button class="btn d full" style="margin-top:10px" onclick="delMat('${esc(id).replace(/'/g,"\\'")}')">Удалить материал</button>`}
+   `<button class="btn d full" style="margin-top:10px" onclick="delMat(${jq(id)})">Удалить материал</button>`}
  </div><div style="height:8px"></div></div>`}
 function matSave(id){const m=MAT(id);
  m.n=document.getElementById('m-n').value.trim()||m.n;
