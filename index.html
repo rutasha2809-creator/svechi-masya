@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#7a4a2b">
+<meta name="theme-color" content="#24486a">
 <title>Свечи Мася — себестоимость и склад</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
---bg:#faf6f1;--card:#fff;--ink:#2e2419;--mut:#8b7d6d;--line:#e8ded1;
---acc:#a8613a;--acc2:#7a4a2b;--soft:#f3e9dd;--ok:#3f7d55;--warn:#c07a1e;--bad:#b3453a;
---r:14px;--sh:0 1px 2px rgba(46,36,25,.06),0 4px 14px rgba(46,36,25,.05);
+--bg:#f4f6f9;--card:#fff;--ink:#1c2530;--mut:#67758a;--line:#dde3ec;
+--acc:#35678f;--acc2:#24486a;--soft:#e9eff6;--ok:#2f7d5f;--warn:#96690f;--bad:#b04a44;
+--r:14px;--sh:0 1px 2px rgba(28,37,48,.05),0 4px 14px rgba(28,37,48,.06);
 }
 @media (prefers-color-scheme:dark){:root{
---bg:#17130f;--card:#211b16;--ink:#f0e7dc;--mut:#a2937f;--line:#33291f;
---acc:#d9945f;--acc2:#e8b184;--soft:#2b221a;--ok:#6bbd8a;--warn:#e0a94b;--bad:#e0796c;
+--bg:#0f141a;--card:#19212a;--ink:#e4ecf4;--mut:#8b9aab;--line:#26313d;
+--acc:#6ba4d4;--acc2:#8fc0e6;--soft:#1e2833;--ok:#5cb894;--warn:#d0a24a;--bad:#dd7b74;
 --sh:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);}}
 html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -79,7 +79,7 @@ td,th{padding:7px 4px;text-align:right;border-bottom:1px solid var(--line);verti
 th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:600}
 td:first-child,th:first-child{text-align:left}
 tr:last-child td{border-bottom:0}
-.sheet{position:fixed;inset:0;z-index:60;background:rgba(20,14,8,.45);display:none;align-items:flex-end;justify-content:center}
+.sheet{position:fixed;inset:0;z-index:60;background:rgba(14,20,28,.5);display:none;align-items:flex-end;justify-content:center}
 .sheet.on{display:flex}
 .sheet>div{background:var(--bg);width:100%;max-width:900px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;
 padding:0 0 calc(24px + env(safe-area-inset-bottom));animation:up .22s cubic-bezier(.2,.8,.3,1)}
@@ -175,8 +175,8 @@ a{cursor:pointer}
   <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="q-mat" placeholder="Найти материал"></div>
   <div class="chips" id="chips-mat"></div>
-  <div class="card tight row wrap2" style="gap:14px">
-    <label class="ck"><input type="checkbox" id="ck-used" onchange="onlyUsed=this.checked;renderStock()"><span>только те, что в рецептах</span></label>
+  <div class="card tight row wrap2" id="filters" style="gap:14px">
+    <label class="ck" id="lbl-used"><input type="checkbox" id="ck-used" onchange="onlyUsed=this.checked;renderStock()"><span>только те, что в рецептах</span></label>
     <label class="ck"><input type="checkbox" id="ck-low" onchange="onlyLow=this.checked;renderStock()"><span>на исходе</span></label>
   </div>
   <div class="list" id="list-mat"></div>
@@ -332,7 +332,7 @@ function calc(r){
   let total=0;
   for(const l of r.l){
     const m=MAT(l.m);
-    let up = m? +m.p : (l.fp!=null?+l.fp:0);
+    let up = m? ((typeof matPrice==='function')?matPrice(m,l.lot):(+m.p||0)) : (l.fp!=null?+l.fp:0);
     if(l.lb==='вода') up=0;
     const q=l.q||{type:'const',value:0};
     let v=0;
@@ -399,9 +399,10 @@ function canMake(r){
   const u=usage(r); let n=Infinity; let lack=[];
   for(const id in u){
     const m=MAT(id); if(!m||!u[id]) continue;
-    const k=Math.floor((+m.s||0)/u[id]);
+    const have=(typeof stockOf==='function')?stockOf(m):(+m.s||0);
+    const k=Math.floor(have/u[id]);
     if(k<n) n=k;
-    if((+m.s||0)<u[id]) lack.push(m.n);
+    if(have<u[id]) lack.push(m.n);
   }
   return {n:(n===Infinity?null:n), lack};
 }
@@ -548,7 +549,7 @@ async function cloudFirstSync(){
 }
 /* ============ UI ============ */
 const PACK_G=new Set(['box','pack','label','ribbon']);
-const CG={mat:{l:'#b3542a',d:'#c46a37',n:'Материалы'},pack:{l:'#0083a0',d:'#0f9cbb',n:'Упаковка'},other:{l:'#a8761a',d:'#b98c22',n:'Прочие расходы'}};
+const CG={mat:{l:'#2d6fb0',d:'#4a8ec4',n:'Материалы'},pack:{l:'#147d5c',d:'#2b9070',n:'Упаковка'},other:{l:'#b07a10',d:'#b8892c',n:'Прочие расходы'}};
 const ROLE={wax:'Воск',wick:'Фитиль',holder:'Держатель фитиля',fragrance:'Отдушка',dye:'Краситель',
  gypsum:'Гипс',pigment:'Добавка',paint:'Краска или лак',vessel:'Ёмкость',box:'Коробка',pack:'Упаковка',
  label:'Наклейка или открытка',ribbon:'Лента',decor:'Декор',waxflower:'Восковой цветок',dryflower:'Сухоцвет',
@@ -585,6 +586,41 @@ const NICE={'э/энергия':'Электроэнергия','амортиза
  'Расходники (бумага, перчатки, кисти)':'Расходники: бумага, перчатки, кисти',
  'держатель/наклейка':'Держатель фитиля','пергамент/тишью':'Пергамент или тишью',
  'открытка/наклейка на коробку':'Наклейка на коробку','СВВ':'СВВ (добавка)','ФОРМА':'Ёмкость','КРЫШКА':'Крышка'};
+/* ===== ПАРТИИ ===== */
+function lotsOf(m){return (m&&m.lots)||[]}
+function stockOf(m){const L=lotsOf(m);return L.length?L.reduce((a,x)=>a+(+x.q||0),0):(+m.s||0)}
+function valueOf(m){const L=lotsOf(m);return L.length?L.reduce((a,x)=>a+(+x.q||0)*(+x.p||0),0):stockOf(m)*(+m.p||0)}
+function sortedLots(m){return lotsOf(m).slice().sort((a,b)=>(a.d||0)-(b.d||0))}
+function activeLot(m){const L=sortedLots(m);return L.find(x=>(+x.q||0)>0)||L[L.length-1]||null}
+function lotById(m,id){return lotsOf(m).find(x=>x.id===id)||null}
+function matPrice(m,lotId){
+ const L=lotsOf(m);
+ if(L.length){const l=(lotId&&lotById(m,lotId))||activeLot(m);return l?(+l.p||0):0}
+ return +m.p||0;
+}
+function syncStock(m){if(lotsOf(m).length)m.s=stockOf(m);if(lotsOf(m).length){const a=activeLot(m);if(a)m.p=+a.p||0}}
+function newLot(q,p,extra){return Object.assign({id:'L'+Date.now()+Math.floor(Math.random()*1e4),q:q,q0:q,p:p,d:Date.now()},extra||{})}
+function lotLabel(m,l){
+ const base=baseOf(m);
+ const src=(l.bq&&l.bu&&l.bu!==base)?`${qfmt(l.bq)} ${esc(l.bu)}`:`${qfmt(l.q0)} ${esc(base)}`;
+ return `${src}${l.sum?' за '+fmt(l.sum,0)+' ₽':''} · ${fmt(l.p,l.p<1?3:2)} ₽/${esc(base)}`;
+}
+function lotDate(l){return l.d?new Date(l.d).toLocaleDateString('ru-RU'):''}
+// списание по партиям: сначала выбранная, дальше по очереди от старых
+function consume(m,amount,preferId){
+ const L=lotsOf(m); if(!L.length){m.s=(+m.s||0)-amount;return}
+ let left=amount;
+ const order=[];
+ if(preferId){const pl=lotById(m,preferId); if(pl)order.push(pl)}
+ sortedLots(m).forEach(l=>{if(!order.includes(l))order.push(l)});
+ for(const l of order){
+  if(left<=0)break;
+  const take=Math.min(+l.q||0,left);
+  l.q=(+l.q||0)-take; left-=take;
+ }
+ if(left>0&&order.length)order[order.length-1].q=(+order[order.length-1].q||0)-left;
+ syncStock(m);
+}
 const isPH=m=>/^(нет|-|—)$/i.test(String(m.n||'').trim());
 function nice(t){t=String(t||'').trim(); if(NICE[t])return NICE[t];
  if(t===t.toUpperCase()&&t.length>3)t=t[0]+t.slice(1).toLowerCase();
@@ -639,7 +675,7 @@ function renderProd(){
  document.getElementById('chips-prod').innerHTML=cats.map(c=>
   `<div class="chip ${c===fProd?'on':''}" onclick="fProd=${jq(c)};renderProd()">${esc(c)}</div>`).join('');
  const q=(document.getElementById('q-prod').value||'').toLowerCase();
- const anyStock=S.materials.some(m=>(+m.s||0)>0);
+ const anyStock=S.materials.some(m=>stockOf(m)>0);
  const rows=S.recipes.filter(r=>(fProd==='все'||r.c===fProd)&&r.n.toLowerCase().includes(q));
  if(!S.recipes.length){
   document.getElementById('chips-prod').innerHTML='';
@@ -674,7 +710,7 @@ function seedOf(id){return SEED.recipes.find(x=>x.id===id)}
 function recipeView(){
  const r=D,{cost,det,d}=calc(r),pr=priceOf(r,cost);
  const coef=(r.coef!=null?r.coef:S.settings.coef);
- const anyStock=S.materials.some(m=>(+m.s||0)>0);
+ const anyStock=S.materials.some(m=>stockOf(m)>0);
  const cm=anyStock?canMake(r):{n:null,lack:[]};
  const buck={mat:[],pack:[],other:[]},hid={mat:[],pack:[],other:[]};
  for(const x of det){
@@ -821,7 +857,13 @@ function lineView(row){
    <div class="row"><div style="flex:1;min-width:0"><div class="t">${m?esc(m.n):'не выбран'}</div>
    <div class="xs mut">${m?esc(SEED.groups[m.g])+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u):'нажмите, чтобы выбрать'}</div></div>
    <span class="tag">выбрать</span></div></div>
-  ${m?`<button class="btn g sm2" style="margin-bottom:12px" onclick="editPrice(${jq(l.m)})">Изменить цену этого материала</button>`:''}
+  ${m&&lotsOf(m).length?`<label class="f"><span>Из какой партии</span>
+    <select onchange="D.l.find(x=>x.r===${row}).lot=this.value||null;paint()">
+     <option value="" ${!l.lot?'selected':''}>та, что в работе (по очереди)</option>
+     ${sortedLots(m).map(z=>`<option value="${esc(z.id)}" ${l.lot===z.id?'selected':''}>${esc(lotLabel(m,z))}${z.d?' · '+lotDate(z):''}${(+z.q||0)<=0?' — израсходована':''}</option>`).join('')}
+    </select></label>
+   <div class="card tight sm" style="background:var(--soft);margin-bottom:12px">В расчёте: <b>${fmt(matPrice(m,l.lot),matPrice(m,l.lot)<1?3:2)} ₽ за 1 ${esc(baseOf(m))}</b></div>`
+   :(m?`<button class="btn g sm2 full" style="margin-bottom:12px" onclick="editPrice(${jq(l.m)})">Изменить цену этого материала</button>`:'')}
   <label class="f"><span>Сколько идёт на изделие</span>
    <select onchange="setRule(${row},this.value)">${QTYRULES.map(o=>`<option value="${o.v}" ${o.v===cur?'selected':''}>${o.n}</option>`).join('')}</select></label>
   ${cur==='const'?`<label class="f"><span>Количество${m?', '+esc(UNITNAME[m.u]||m.u):''}</span>
@@ -876,12 +918,12 @@ function renderStock(){
  const q=(document.getElementById('q-mat').value||'').toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(fMat==='все'||m.g===fMat)&&m.n.toLowerCase().includes(q));
  if(onlyUsed)rows=rows.filter(m=>used.has(m.id));
- const anyStock=S.materials.some(m=>(+m.s||0)>0);
+ const anyStock=S.materials.some(m=>stockOf(m)>0);
  if(onlyLow)rows=rows.filter(m=>isLow(m)||(+m.s||0)<=0);
  const lowN=S.materials.filter(m=>used.has(m.id)&&isLow(m)).length;
  const real=S.materials.filter(m=>!isPH(m));
- const totalVal=real.reduce((a,m)=>a+((+m.s||0)*(+m.p||0)),0);
- const noPrice=real.filter(m=>(+m.p||0)<=0).length;
+ const totalVal=real.reduce((a,m)=>a+valueOf(m),0);
+ const noPrice=real.filter(m=>matPrice(m)<=0).length;
  document.getElementById('stock-sum').innerHTML=
   (totalVal>0?`<div class="card tight" style="width:100%;margin:0 0 8px;display:flex;align-items:baseline;gap:10px">
      <span class="sm mut">Запас на складе</span><span class="sp"></span><b class="big num" style="font-size:20px">${fmt(totalVal,0)} ₽</b></div>`:'')+
@@ -890,6 +932,15 @@ function renderStock(){
    ${noPrice?`<span class="tag warn">без цены: ${noPrice}</span>`:''}`+
    (!anyStock?`<div class="card tight sm mut" style="width:100%;margin:6px 0 0">Остатков пока нет. Нажмите «Внести закупку» — и в изделиях появится подсказка, на сколько штук хватит материалов.</div>`:'');
  const ck=document.getElementById('ck-used'); if(ck)ck.checked=onlyUsed;
+ // фильтры показываем только когда справочник вырос — на пяти позициях они мешают
+ const fbox=document.getElementById('filters');
+ if(fbox){
+  const big=real.length>40, mid=real.length>12;
+  fbox.style.display=mid?'':'none';
+  const lu=document.getElementById('lbl-used'); if(lu)lu.style.display=big?'':'none';
+  if(!big&&onlyUsed){onlyUsed=false}
+ }
+ const chips=document.getElementById('chips-mat'); if(chips)chips.style.display=real.length>8?'':'none';
  const total=rows.length; rows=rows.slice(0,300);
  if(!S.materials.length){
   document.getElementById('chips-mat').innerHTML='';
@@ -901,57 +952,58 @@ function renderStock(){
   return;
  }
  document.getElementById('list-mat').innerHTML=rows.length?rows.map(m=>{
-  const st=+m.s||0;
-  const pr=+m.p||0, val=st*pr;
-  const badge=!anyStock?'':(st<=0?'<span class="tag">нет на складе</span>':(isLow(m)?`<span class="tag warn">${qfmt(st)} ${esc(m.u)}</span>`:`<span class="tag ok">${qfmt(st)} ${esc(m.u)}</span>`));
+  const st=stockOf(m), pr=matPrice(m), val=valueOf(m), nl=lotsOf(m).length;
+  const badge=!anyStock?'':(st<=0?'<span class="tag">нет на складе</span>':(isLow(m)?`<span class="tag warn">${qfmt(st)} ${esc(baseOf(m))}</span>`:`<span class="tag ok">${qfmt(st)} ${esc(baseOf(m))}</span>`));
   return `<div class="item" onclick="openMat(${jq(m.id)})"><div class="row">
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
-   <div class="xs mut" style="margin-top:3px">${esc(SEED.groups[m.g]||m.g)} · ${pr>0?fmt(pr,pr<1?3:2)+' ₽/'+esc(m.u):'<span style="color:var(--warn)">цена не задана</span>'}</div></div>
+   <div class="xs mut" style="margin-top:3px">${esc(SEED.groups[m.g]||m.g)} · ${pr>0?fmt(pr,pr<1?3:2)+' ₽/'+esc(baseOf(m)):'<span style="color:var(--warn)">цена не задана</span>'}${nl>1?` · партий: ${nl}`:''}</div></div>
    <div style="text-align:right">${badge}${val>0?`<div class="xs mut num" style="margin-top:4px">на ${fmt(val,0)} ₽</div>`:''}</div>
    </div></div>`}).join('')+(total>300?`<p class="xs mut" style="text-align:center">Показано 300 из ${total}</p>`:'')
   :`<div class="empty">Ничего не найдено${onlyUsed?' среди тех, что используются в рецептах':''}.
    ${onlyUsed?'<br><button class="btn g sm2" style="margin-top:12px" onclick="onlyUsed=false;renderStock()">Показать весь справочник</button>':''}</div>`;
 }
-function isLow(m){const st=+m.s||0,mn=+m.min||0;if(mn>0)return st<=mn;return st>0&&m.pq&&st<m.pq*(S.settings.low/100)}
+function isLow(m){const st=stockOf(m),mn=+m.min||0;if(mn>0)return st<=mn;const a=activeLot(m);const ref=a?(+a.q0||0):(+m.pq||0)*conv(m.bu||baseOf(m),baseOf(m));return st>0&&ref>0&&st<ref*(S.settings.low/100)}
 // порог: если свой не задан — считаем от объёма последней закупки
-function openMat(id){push(matView.bind(null,id));setTimeout(mmCalc,30)}
+function openMat(id){push(matView.bind(null,id))}
 function matView(id){
  const m=MAT(id);if(!m)return head('Материал')+'<div class="wrap"><div class="empty">Не найден</div></div>';
+ const base=baseOf(m), L=sortedLots(m), st=stockOf(m), val=valueOf(m), pr=matPrice(m);
  const used=S.recipes.filter(r=>r.l.some(l=>l.m===id));
- const _val=(+m.s||0)*(+m.p||0);
- const _base=baseOf(m), _bu=m.bu||(buyUnitsFor(_base).includes(m.u)?m.u:_base);
+ const lotsHtml = L.length ? L.map(l=>{
+   const act=activeLot(m)&&activeLot(m).id===l.id;
+   const done=(+l.q||0)<=0;
+   return `<div class="lrow"><div>
+     <div class="n2">${qfmt(l.q)} ${esc(base)} ${done?'<span class="tag">израсходована</span>':(act?'<span class="tag ok">в работе</span>':'')}</div>
+     <div class="s2">${lotLabel(m,l)}${l.d?' · '+lotDate(l):''}</div></div>
+     <div style="text-align:right"><div class="c2">${fmt((+l.q||0)*(+l.p||0),0)} ₽</div>
+     <a class="xs" onclick="editLot(${jq(id)},${jq(l.id)})">изменить</a></div></div>`}).join('')
+  : `<div class="sm mut" style="padding:8px 0">Партий пока нет. Нажмите «Внести закупку» — появится первая, с ценой на день покупки.</div>`;
  return head(m.n,SEED.groups[m.g])+`<div class="wrap" style="padding-top:12px">
  <div class="kpi" style="margin-bottom:12px">
-  <div><div class="l">Остаток</div><div class="v num">${qfmt(m.s||0)} <span class="sm mut">${esc(m.u)}</span></div></div>
-  <div><div class="l">Цена</div><div class="v num">${(+m.p||0)>0?fmt(m.p,m.p<1?3:2)+' <span class="sm mut">₽/'+esc(m.u)+'</span>':'<span class="sm" style="color:var(--warn)">не задана</span>'}</div></div>
+  <div><div class="l">Остаток</div><div class="v num">${qfmt(st)} <span class="sm mut">${esc(base)}</span></div></div>
+  <div><div class="l">Лежит на сумму</div><div class="v num">${fmt(val,0)} <span class="sm mut">₽</span></div></div>
  </div>
- ${_val>0?`<div class="card tight row" style="margin-bottom:12px"><span class="sm mut">Лежит на складе на сумму</span><span class="sp"></span><b class="num">${fmt(_val,2)} ₽</b></div>`:''}
- ${(+m.p||0)<=0?`<div class="card tight sm warnbox" style="margin-bottom:12px">Цена не задана — материал считается бесплатным во всех изделиях. Впишите цену за единицу ниже, либо укажите сколько купили и сколько заплатили и нажмите «Пересчитать цену».</div>`:''}
- <button class="btn full" style="margin-bottom:12px" onclick="openBuy(${jq(id)})">Внести закупку этого материала</button>
+ <button class="btn full" style="margin-bottom:12px" onclick="openBuy(${jq(id)})">Внести закупку</button>
+ <div class="card">
+  <div class="row" style="margin-bottom:6px"><h3 class="sm">Партии</h3><span class="sp"></span>
+   <span class="xs mut">${pr>0?'в расчёте: '+fmt(pr,pr<1?3:2)+' ₽/'+esc(base):''}</span></div>
+  ${lotsHtml}
+  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе». В составе изделия можно выбрать конкретную партию.</p>`:''}
+ </div>
+ ${!L.length?`<div class="card">
+   <h3 class="sm" style="margin-bottom:8px">Цена без партий</h3>
+   <p class="xs mut" style="margin:0 0 10px">Если партии не ведёте — задайте цену вручную, она будет применяться всегда.</p>
+   <label class="f"><span>Цена за 1 ${esc(base)}, ₽</span><input id="m-p" type="number" step="any" value="${m.p}"></label>
+   <label class="f"><span>Остаток, ${esc(base)}</span><input id="m-s" type="number" step="any" value="${m.s||0}"></label>
+  </div>`:''}
  <div class="card"><h3 class="sm" style="margin-bottom:10px">Карточка материала</h3>
   <label class="f"><span>Название</span><input id="m-n" value="${esc(m.n)}"></label>
   <div class="grid2">
    <label class="f"><span>Раздел справочника</span><select id="m-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(SEED.groups[g])}</option>`).join('')}</select></label>
-   <label class="f"><span>Расходуется в</span><select id="m-u" onchange="mmUnit()">${BASE_UNITS.map(x=>`<option ${x===_base?'selected':''}>${x}</option>`).join('')}</select></label>
+   <label class="f"><span>Расходуется в</span><select id="m-u" ${L.length?'disabled':''}>${BASE_UNITS.map(x=>`<option ${x===base?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
-  <p class="xs mut" style="margin:-4px 0 12px">В этих единицах считается расход в рецептах и остаток на складе.</p>
-  <div class="hsep"></div>
-  <h3 class="sm" style="margin-bottom:4px">Как покупаете</h3>
-  <p class="xs mut" style="margin:0 0 10px">Например: 5 кг за 2800 ₽. Цену за <i id="m-u2">${esc(_base)}</i> приложение посчитает само.</p>
-  <div class="row" style="gap:8px;align-items:flex-end;margin-bottom:10px">
-   <label class="f" style="flex:1;margin:0"><span>Покупаю по</span><input id="m-pq" type="number" step="any" placeholder="5" value="${m.pq??''}" oninput="mmCalc()"></label>
-   <label class="f" style="width:96px;margin:0"><span>&nbsp;</span><select id="m-bu" onchange="mmCalc()">${buyUnitsFor(_base).map(x=>`<option ${x===_bu?'selected':''}>${x}</option>`).join('')}</select></label>
-   <label class="f" style="flex:1;margin:0"><span>Заплатили, ₽</span><input id="m-pp" type="number" step="any" placeholder="2800" value="${m.pp??''}" oninput="mmCalc()"></label>
-  </div>
-  <div class="card tight sm" id="m-hint" style="background:var(--soft);margin-bottom:12px"></div>
-  <label class="f"><span>Цена за 1 <i id="m-u3">${esc(_base)}</i>, ₽ <a class="xs" style="float:right;font-weight:400" onclick="mmAuto()">пересчитать из закупки</a></span>
-   <input id="m-p" type="number" step="any" value="${m.p}" oninput="this.dataset.manual='1'"></label>
-  <div class="hsep"></div>
-  <div class="grid2">
-   <label class="f"><span>Остаток, <i id="m-u4">${esc(_base)}</i></span><input id="m-s" type="number" step="any" value="${m.s||0}" oninput="mmStock()"></label>
-   <label class="f"><span>Предупреждать ниже</span><input id="m-min" type="number" step="any" value="${m.min||0}"></label>
-  </div>
-  <div class="card tight sm" id="m-val" style="background:var(--soft);margin-bottom:12px"></div>
+  ${L.length?'<p class="xs mut" style="margin:-4px 0 12px">Единицу нельзя менять, пока есть партии — иначе остатки перестанут сходиться.</p>':''}
+  <label class="f"><span>Предупреждать, когда остаток ниже</span><input id="m-min" type="number" step="any" value="${m.min||0}"></label>
   <button class="btn full" onclick="matSave(${jq(id)})">Сохранить</button>
  </div>
  <div class="card"><h3 class="sm" style="margin-bottom:8px">Используется в изделиях: ${used.length}</h3>
@@ -960,6 +1012,40 @@ function matView(id){
   ${used.length?'<p class="xs mut" style="margin:10px 0 0">Пока материал используется хотя бы в одном изделии, удалить его нельзя — сначала уберите из рецептов.</p>':
    `<button class="btn d full" style="margin-top:10px" onclick="delMat(${jq(id)})">Удалить материал</button>`}
  </div><div style="height:8px"></div></div>`}
+
+/* ---- правка партии ---- */
+function editLot(mid,lid){push(lotView.bind(null,mid,lid))}
+function lotView(mid,lid){
+ const m=MAT(mid), l=lotById(m,lid); if(!l)return head('Партия')+'';
+ const base=baseOf(m);
+ return head('Партия от '+lotDate(l),m.n)+`<div class="wrap" style="padding-top:12px"><div class="card">
+  <p class="xs mut" style="margin:0 0 10px">Цена этой партии зафиксирована в день покупки и больше не меняется сама.</p>
+  <div class="grid2">
+   <label class="f"><span>Куплено, ${esc(base)}</span><input id="l-q0" type="number" step="any" value="${l.q0??l.q}"></label>
+   <label class="f"><span>Заплатили, ₽</span><input id="l-sum" type="number" step="any" value="${l.sum??''}" oninput="lotCalc(${jq(base)})"></label>
+  </div>
+  <label class="f"><span>Цена за 1 ${esc(base)}, ₽</span><input id="l-p" type="number" step="any" value="${l.p}"></label>
+  <label class="f"><span>Осталось сейчас, ${esc(base)}</span><input id="l-q" type="number" step="any" value="${l.q}"></label>
+  <div class="grid2"><button class="btn" onclick="lotSave(${jq(mid)},${jq(lid)})">Сохранить</button>
+  <button class="btn d" onclick="lotDel(${jq(mid)},${jq(lid)})">Удалить партию</button></div>
+ </div></div>`}
+function lotCalc(base){
+ const q=parseFloat(document.getElementById('l-q0').value)||0;
+ const s=parseFloat(document.getElementById('l-sum').value)||0;
+ const pe=document.getElementById('l-p');
+ if(q>0&&s>0&&pe)pe.value=(s/q).toFixed(4);
+}
+function lotSave(mid,lid){
+ const m=MAT(mid), l=lotById(m,lid);
+ l.q0=parseFloat(document.getElementById('l-q0').value)||0;
+ l.sum=parseFloat(document.getElementById('l-sum').value)||null;
+ l.p=parseFloat(document.getElementById('l-p').value)||0;
+ l.q=parseFloat(document.getElementById('l-q').value)||0;
+ syncStock(m); save(); back(); toast('Партия обновлена')}
+function lotDel(mid,lid){
+ if(!confirm('Удалить партию? Остаток уменьшится на её количество.'))return;
+ const m=MAT(mid); m.lots=lotsOf(m).filter(x=>x.id!==lid); syncStock(m); save(); back(); toast('Партия удалена')}
+
 function mmUnit(){
  const base=document.getElementById('m-u').value;
  const sel=document.getElementById('m-bu'), cur=sel.value;
@@ -994,15 +1080,14 @@ function mmStock(){
   : (st>0?'<span style="color:var(--warn)">Остаток есть, но цена не задана — стоимость посчитать нечем</span>':'Остатка нет');
 }
 function matSave(id){const m=MAT(id);
- m.n=document.getElementById('m-n').value.trim()||m.n;
- m.g=document.getElementById('m-g').value; m.u=document.getElementById('m-u').value;
- m.bu=document.getElementById('m-bu').value;
- m.s=parseFloat(document.getElementById('m-s').value)||0;
- m.min=parseFloat(document.getElementById('m-min').value)||0;
- m.pq=parseFloat(document.getElementById('m-pq').value)||null;
- m.pp=parseFloat(document.getElementById('m-pp').value)||null;
- m.p=parseFloat(document.getElementById('m-p').value)||0;
- save();toast('Сохранено');back()}
+ const g=k=>document.getElementById(k);
+ m.n=g('m-n').value.trim()||m.n;
+ m.g=g('m-g').value;
+ if(!lotsOf(m).length){ m.u=g('m-u').value;
+  if(g('m-p'))m.p=parseFloat(g('m-p').value)||0;
+  if(g('m-s'))m.s=parseFloat(g('m-s').value)||0; }
+ m.min=parseFloat(g('m-min').value)||0;
+ syncStock(m); save();toast('Сохранено');back()}
 function delMat(id){if(!confirm('Удалить материал?'))return;S.materials=S.materials.filter(m=>m.id!==id);save();back();toast('Удалён')}
 const UNITS=['г','кг','мл','л','см','м','шт','исп.'];
 const BASE_UNITS=['г','мл','см','шт','исп.'];
@@ -1079,7 +1164,10 @@ function createMat(){
  let p=parseFloat(document.getElementById('n-p').value);
  if(!isFinite(p)||p<=0) p=unitPriceFrom(pq,bu,u,pp);
  const id='usr::'+Date.now()+'::'+n;
- S.materials.push({id,g,n,u,bu,pq,pp,p,s:st,min:0,x:{}});
+ const mat={id,g,n,u,bu,pq,pp,p,s:st,min:0,x:{},lots:[]};
+ if(st>0&&p>0)mat.lots=[newLot(st,p,{q0:st,sum:pp||st*p,bq:pq||st,bu})];
+ syncStock(mat);
+ S.materials.push(mat);
  save();back();toast(p>0?'Материал создан':'Создан. Цена не задана — впишите её в карточке');render()}
 
 /* ---- закупка ---- */
@@ -1091,9 +1179,8 @@ function buyView(){
   const q=parseFloat(b.q)||0,s=parseFloat(b.s)||0;
   let hint='';
   if(m&&q>0&&s>0){
-   const bu0=b.u||(m.bu||baseOf(m)), add=q*conv(bu0,baseOf(m));
-   const have=Math.max(0,+m.s||0), np=s/add, avg=(have+add)>0?((have*m.p)+s)/(have+add):np;
-   hint=`<div class="xs mut" style="margin-top:6px">Было ${qfmt(m.s||0)} ${esc(baseOf(m))} по ${fmt(m.p,m.p<1?3:2)} ₽ · станет <b>${qfmt((+m.s||0)+add)} ${esc(baseOf(m))}</b> по <b>${fmt(avg,avg<1?3:2)} ₽</b></div>`}
+   const bu0=b.u||(m.bu||baseOf(m)), add=q*conv(bu0,baseOf(m)), np=s/add;
+   hint=`<div class="xs mut" style="margin-top:6px">Новая партия: <b>${qfmt(add)} ${esc(baseOf(m))}</b> по <b>${fmt(np,np<1?3:2)} ₽/${esc(baseOf(m))}</b>. Остаток станет ${qfmt(stockOf(m)+add)} ${esc(baseOf(m))}.</div>`}
   const bunits=m?buyUnitsFor(baseOf(m)):['шт'];
   const bsel=b.u||(m?(m.bu||baseOf(m)):'шт');
   const inBase=m?q*conv(bsel,baseOf(m)):0;
@@ -1102,7 +1189,7 @@ function buyView(){
    ${buyRows.length>1?`<a class="xs" onclick="buyRows.splice(${i},1);paint()">убрать</a>`:''}</div>
    <div class="item" onclick="pickMaterial('Что купили','все',function(id){buyRows[${i}].id=id;paint()})" style="margin-bottom:10px">
     <div class="row"><div style="flex:1;min-width:0"><div class="t">${m?esc(m.n):'выберите материал'}</div>
-    ${m?`<div class="xs mut">${esc(SEED.groups[m.g])} · сейчас ${qfmt(m.s||0)} ${esc(m.u)}</div>`:''}</div><span class="tag">выбрать</span></div></div>
+    ${m?`<div class="xs mut">${esc(SEED.groups[m.g])} · сейчас ${qfmt(stockOf(m))} ${esc(baseOf(m))}</div>`:''}</div><span class="tag">выбрать</span></div></div>
    <div class="row" style="gap:8px;align-items:flex-end">
     <label class="f" style="flex:1;margin:0"><span>Сколько купили</span><input type="number" step="any" value="${esc(b.q)}" oninput="buyRows[${i}].q=this.value" onchange="paint()"></label>
     <label class="f" style="width:92px;margin:0"><span>&nbsp;</span><select onchange="buyRows[${i}].u=this.value;paint()">${bunits.map(x=>`<option ${x===bsel?'selected':''}>${x}</option>`).join('')}</select></label>
@@ -1111,18 +1198,19 @@ function buyView(){
    ${m&&q>0&&bsel!==baseOf(m)?`<div class="xs mut" style="margin-top:8px">${qfmt(q)} ${esc(bsel)} = <b>${qfmt(inBase)} ${esc(baseOf(m))}</b></div>`:''}
    ${hint}</div>`}).join('')}
  <button class="btn g full" style="margin-bottom:10px" onclick="buyRows.push({id:null,q:'',s:'',u:null});paint()">+ ещё позиция</button>
- <div class="grid2"><button class="btn" onclick="doBuy(true)">Записать и обновить цены</button>
- <button class="btn g" onclick="doBuy(false)">Только пополнить остаток</button></div>
- <p class="xs mut" style="margin-top:10px">«Обновить цены» пересчитает цену за единицу как среднюю между старым остатком и новой закупкой. Если цена не изменилась — выбирайте второй вариант.</p>
+ <button class="btn full" onclick="doBuy(true)">Записать закупку</button>
+ <p class="xs mut" style="margin-top:10px">Каждая закупка ложится отдельной партией со своей ценой на день покупки. Ничего не усредняется: в расчёте участвует цена той партии, из которой делаете.</p>
  <div style="height:8px"></div></div>`}
 function doBuy(upd){
  let n=0;
  for(const b of buyRows){const m=b.id?MAT(b.id):null;const q=parseFloat(b.q)||0,s=parseFloat(b.s)||0;
   if(!m||q<=0)continue;
-  const bu0=b.u||(m.bu||baseOf(m)), add=q*conv(bu0,baseOf(m));
-  const st=+m.s||0, have=Math.max(0,st);
-  if(upd&&s>0){m.p=(have+add)>0?((have*m.p)+s)/(have+add):s/add; m.pq=q; m.pp=s; m.bu=bu0}
-  m.s=st+add; S.log.unshift({t:'buy',d:Date.now(),id:m.id,n:m.n,q:add,u:baseOf(m),sum:s,bq:q,bu:bu0}); n++}
+  const base=baseOf(m), bu0=b.u||(m.bu||base), add=q*conv(bu0,base);
+  // если раньше остаток был без партий — переносим его в стартовую партию
+  if(!lotsOf(m).length&&(+m.s||0)>0){m.lots=[newLot(+m.s||0,+m.p||0,{q0:+m.s||0,sum:(+m.s||0)*(+m.p||0),bq:+m.s||0,bu:base,d:Date.now()-1})]}
+  m.lots=lotsOf(m); m.lots.push(newLot(add,s>0?s/add:0,{q0:add,sum:s,bq:q,bu:bu0}));
+  m.bu=bu0; m.pq=q; m.pp=s; syncStock(m);
+  S.log.unshift({t:'buy',d:Date.now(),id:m.id,n:m.n,q:add,u:base,sum:s,bq:q,bu:bu0}); n++}
  if(!n)return toast('Заполните хотя бы одну позицию');
  save();toast('Записано позиций: '+n);back()}
 
@@ -1155,8 +1243,8 @@ function mkCheck(){
  const n=Math.max(1,parseInt(document.getElementById('mk-qty').value)||1);
  const u=usage(r),{cost}=calc(r);let rows='',ok=true,cnt=0;
  for(const id in u){const m=MAT(id);if(!m||!u[id])continue;cnt++;
-  const need=u[id]*n,have=+m.s||0,bad=have<need;if(bad)ok=false;
-  rows+=`<tr><td>${esc(m.n)}</td><td class="num">${qfmt(need)} ${esc(m.u)}</td>
+  const need=u[id]*n,have=stockOf(m),bad=have<need;if(bad)ok=false;
+  rows+=`<tr><td>${esc(m.n)}</td><td class="num">${qfmt(need)} ${esc(baseOf(m))}</td>
    <td class="num" style="color:${bad?'var(--bad)':'var(--ok)'}">${qfmt(have)}</td></tr>`}
  document.getElementById('mk-check').innerHTML=`
   <div class="kpi" style="margin-bottom:10px">
@@ -1170,7 +1258,9 @@ function doMake(){
  const n=Math.max(1,parseInt(document.getElementById('mk-qty').value)||1);
  if(!confirm(`Списать материалы на ${n} шт «${r.n}»?`))return;
  const u=usage(r),{cost}=calc(r);
- for(const id in u){const m=MAT(id);if(m)m.s=(+m.s||0)-u[id]*n}
+ for(const id in u){const m=MAT(id);if(!m)continue;
+  const line=r.l.find(x=>x.m===id&&x.lot);
+  consume(m,u[id]*n,line?line.lot:null)}
  S.log.unshift({t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n});
  save();toast('Списано на '+n+' шт');renderMake()}
 
