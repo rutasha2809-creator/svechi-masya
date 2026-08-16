@@ -160,6 +160,7 @@ a{cursor:pointer}
   <div class="chips" id="chips-prod"></div>
   <div class="list" id="list-prod"></div>
   <button class="btn g full" style="margin-top:12px" onclick="newRecipe()">+ Новое изделие</button>
+  <button class="btn g full sm2" style="margin-top:8px" onclick="openCats()">Категории изделий — добавить свою</button>
   <p class="xs mut" style="text-align:center;margin-top:10px">Нажмите на изделие, чтобы увидеть из чего складывается цена и поменять состав</p>
 </section>
 
@@ -169,6 +170,7 @@ a{cursor:pointer}
   <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="q-mat" placeholder="Найти материал"></div>
   <div class="chips" id="chips-mat"></div>
+  <button class="btn g full sm2" style="margin-bottom:10px" onclick="openGroups()">Разделы справочника — добавить свой</button>
   <div class="card tight row wrap2" id="filters" style="gap:14px">
     <label class="ck" id="lbl-used"><input type="checkbox" id="ck-used" onchange="onlyUsed=this.checked;renderStock()"><span>только те, что в рецептах</span></label>
     <label class="ck"><input type="checkbox" id="ck-low" onchange="onlyLow=this.checked;renderStock()"><span>на исходе</span></label>
@@ -212,9 +214,12 @@ a{cursor:pointer}
     <div id="data-box"></div>
   </div>
   <div class="card">
-    <h3 style="margin-bottom:4px">Категории изделий</h3>
-    <p class="sm mut" style="margin:0 0 12px">Добавить, переименовать или удалить группы, по которым разложены изделия.</p>
-    <button class="btn g full" onclick="openCats()">Управлять категориями</button>
+    <h3 style="margin-bottom:4px">Справочники</h3>
+    <p class="sm mut" style="margin:0 0 12px">Категории изделий и разделы, по которым разложены материалы. Можно переименовать, добавить свои и убрать ненужные.</p>
+    <div class="grid2">
+      <button class="btn g" onclick="openCats()">Категории изделий</button>
+      <button class="btn g" onclick="openGroups()">Разделы материалов</button>
+    </div>
   </div>
   <div class="card">
     <h3 style="margin-bottom:4px">Резервная копия</h3>
@@ -271,7 +276,9 @@ function load(){
   return fresh();
 }
 function fresh(){
-  return { materials:[], recipes:[], cats:[], settings:{...DEF_SET}, log:[], demo:false, v:2 };
+  return { materials:[], recipes:[],
+    cats:['Интерьерные свечи','Формовые свечи','Контейнерные свечи','Гипсовый декор','Ароматизация','Наборы'],
+    groups:{}, groupsOff:[], settings:{...DEF_SET}, log:[], demo:false, v:2 };
 }
 function demoData(){
   return {
@@ -623,6 +630,13 @@ function consume(m,amount,preferId){
  if(left>0&&order.length)order[order.length-1].q=(+order[order.length-1].q||0)-left;
  syncStock(m);
 }
+function GROUPS(){
+ const all=Object.assign({},SEED.groups,S.groups||{});
+ (S.groupsOff||[]).forEach(k=>{if(!S.materials.some(m=>m.g===k))delete all[k]});
+ return all;
+}
+function groupName(g){return GROUPS()[g]||(S.groups&&S.groups[g])||SEED.groups[g]||g}
+function groupCount(g){return S.materials.filter(m=>m.g===g&&!isPH(m)).length}
 const isPH=m=>/^(нет|-|—)$/i.test(String(m.n||'').trim());
 function nice(t){t=String(t||'').trim(); if(NICE[t])return NICE[t];
  if(t===t.toUpperCase()&&t.length>3)t=t[0]+t.slice(1).toLowerCase();
@@ -653,17 +667,17 @@ let pickState=null;
 function pickMaterial(title,group,cb){
  pickState={cb,group:group||'все',q:''};window.__pick=cb;push(pickRender.bind(null,title))}
 function pickRender(title){
- const gs=['все',...Object.keys(SEED.groups).filter(g=>S.materials.some(m=>m.g===g))];
+ const gs=['все',...Object.keys(GROUPS()).filter(g=>S.materials.some(m=>m.g===g))];
  const q=pickState.q.toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(pickState.group==='все'||m.g===pickState.group)&&m.n.toLowerCase().includes(q));
  const total=rows.length; rows=rows.slice(0,80);
  return head(title,'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
  <input id="pk-q" placeholder="Начните вводить название" value="${esc(pickState.q)}" oninput="pickState.q=this.value;paint();setTimeout(()=>{const e=document.getElementById('pk-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)},0)"></div>
- <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?'все группы':esc(SEED.groups[g])}</div>`).join('')}</div>
+ <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?'все разделы':esc(groupName(g))}</div>`).join('')}</div>
  <div class="list">${rows.map(m=>`<div class="item" onclick="__pick(${jq(m.id)});back()">
    <div class="row"><div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
-   <div class="xs mut">${esc(SEED.groups[m.g]||m.g)} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
+   <div class="xs mut">${esc(groupName(m.g))} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
    ${(+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:''}</div></div>`).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
  ${total>80?`<p class="xs mut" style="text-align:center;margin-top:10px">Показано 80 из ${total} — уточните поиск</p>`:''}
  <button class="btn g full" style="margin-top:12px" onclick="__pick(null);back()">Убрать материал из строки</button></div>`}
@@ -857,7 +871,7 @@ function lineView(row){
   <label class="f"><span>Материал</span></label>
   <div class="item" onclick="chooseMat(${row})" style="margin-bottom:12px">
    <div class="row"><div style="flex:1;min-width:0"><div class="t">${m?esc(m.n):'не выбран'}</div>
-   <div class="xs mut">${m?esc(SEED.groups[m.g])+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u):'нажмите, чтобы выбрать'}</div></div>
+   <div class="xs mut">${m?esc(groupName(m.g))+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u):'нажмите, чтобы выбрать'}</div></div>
    <span class="tag">выбрать</span></div></div>
   ${m&&lotsOf(m).length?`<label class="f"><span>Из какой партии</span>
     <select onchange="D.l.find(x=>x.r===${row}).lot=this.value||null;paint()">
@@ -914,9 +928,9 @@ function savePrice(id){const m=MAT(id);
 function usedIds(){const s=new Set();for(const r of S.recipes)for(const l of r.l)if(l.m)s.add(l.m);return s}
 function renderStock(){
  const used=usedIds();
- const gs=['все',...Object.keys(SEED.groups).filter(g=>S.materials.some(m=>m.g===g))];
+ const gs=['все',...Object.keys(GROUPS()).filter(g=>S.materials.some(m=>m.g===g))];
  document.getElementById('chips-mat').innerHTML=gs.map(g=>
-  `<div class="chip ${g===fMat?'on':''}" onclick="fMat=${jq(g)};renderStock()">${g==='все'?'все':esc(SEED.groups[g])}</div>`).join('');
+  `<div class="chip ${g===fMat?'on':''}" onclick="fMat=${jq(g)};renderStock()">${g==='все'?'все':esc(groupName(g))}</div>`).join('');
  const q=(document.getElementById('q-mat').value||'').toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(fMat==='все'||m.g===fMat)&&m.n.toLowerCase().includes(q));
  if(onlyUsed)rows=rows.filter(m=>used.has(m.id));
@@ -958,7 +972,7 @@ function renderStock(){
   const badge=!anyStock?'':(st<=0?'<span class="tag">нет на складе</span>':(isLow(m)?`<span class="tag warn">${qfmt(st)} ${esc(baseOf(m))}</span>`:`<span class="tag ok">${qfmt(st)} ${esc(baseOf(m))}</span>`));
   return `<div class="item" onclick="openMat(${jq(m.id)})"><div class="row">
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
-   <div class="xs mut" style="margin-top:3px">${esc(SEED.groups[m.g]||m.g)} · ${pr>0?fmt(pr,pr<1?3:2)+' ₽/'+esc(baseOf(m)):'<span style="color:var(--warn)">цена не задана</span>'}${nl>1?` · партий: ${nl}`:''}</div></div>
+   <div class="xs mut" style="margin-top:3px">${esc(groupName(m.g))} · ${pr>0?fmt(pr,pr<1?3:2)+' ₽/'+esc(baseOf(m)):'<span style="color:var(--warn)">цена не задана</span>'}${nl>1?` · партий: ${nl}`:''}</div></div>
    <div style="text-align:right">${badge}${val>0?`<div class="xs mut num" style="margin-top:4px">на ${fmt(val,0)} ₽</div>`:''}</div>
    </div></div>`}).join('')+(total>300?`<p class="xs mut" style="text-align:center">Показано 300 из ${total}</p>`:'')
   :`<div class="empty">Ничего не найдено${onlyUsed?' среди тех, что используются в рецептах':''}.
@@ -980,7 +994,7 @@ function matView(id){
      <div style="text-align:right"><div class="c2">${fmt((+l.q||0)*(+l.p||0),0)} ₽</div>
      <a class="xs" onclick="editLot(${jq(id)},${jq(l.id)})">изменить</a></div></div>`}).join('')
   : `<div class="sm mut" style="padding:8px 0">Партий пока нет. Нажмите «Внести закупку» — появится первая, с ценой на день покупки.</div>`;
- return head(m.n,SEED.groups[m.g])+`<div class="wrap" style="padding-top:12px">
+ return head(m.n,groupName(m.g))+`<div class="wrap" style="padding-top:12px">
  <div class="kpi" style="margin-bottom:12px">
   <div><div class="l">Остаток</div><div class="v num">${qfmt(st)} <span class="sm mut">${esc(base)}</span></div></div>
   <div><div class="l">Лежит на сумму</div><div class="v num">${fmt(val,0)} <span class="sm mut">₽</span></div></div>
@@ -1001,7 +1015,7 @@ function matView(id){
  <div class="card"><h3 class="sm" style="margin-bottom:10px">Карточка материала</h3>
   <label class="f"><span>Название</span><input id="m-n" value="${esc(m.n)}"></label>
   <div class="grid2">
-   <label class="f"><span>Раздел справочника</span><select id="m-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(SEED.groups[g])}</option>`).join('')}</select></label>
+   <label class="f"><span>Раздел справочника</span><select id="m-g">${Object.keys(GROUPS()).map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(groupName(g))}</option>`).join('')}${GROUPS()[m.g]?'':`<option value="${esc(m.g)}" selected>${esc(groupName(m.g))}</option>`}</select></label>
    <label class="f"><span>Расходуется в</span><select id="m-u" ${L.length?'disabled':''}>${BASE_UNITS.map(x=>`<option ${x===base?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
   ${L.length?'<p class="xs mut" style="margin:-4px 0 12px">Единицу нельзя менять, пока есть партии — иначе остатки перестанут сходиться.</p>':''}
@@ -1112,7 +1126,7 @@ function newMatView(){
  return head('Новый материал','Заполните и нажмите «Создать»')+`<div class="wrap" style="padding-top:12px"><div class="card">
   <label class="f"><span>Что это за материал</span><input id="n-n" placeholder="Например: Пчелиный воск"></label>
   <div class="grid2">
-   <label class="f"><span>Раздел справочника</span><select id="n-g">${Object.keys(SEED.groups).map(g=>`<option value="${g}">${esc(SEED.groups[g])}</option>`).join('')}</select></label>
+   <label class="f"><span>Раздел справочника</span><select id="n-g">${Object.keys(GROUPS()).map(g=>`<option value="${g}">${esc(groupName(g))}</option>`).join('')}</select></label>
    <label class="f"><span>Расходуется в</span><select id="n-u" onchange="nmUnit()">${BASE_UNITS.map(x=>`<option ${x==='г'?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
   <p class="xs mut" style="margin:-4px 0 12px">В этих единицах пойдёт расход в рецептах и остаток на складе.</p>
@@ -1191,7 +1205,7 @@ function buyView(){
    ${buyRows.length>1?`<a class="xs" onclick="buyRows.splice(${i},1);paint()">убрать</a>`:''}</div>
    <div class="item" onclick="pickMaterial('Что купили','все',function(id){buyRows[${i}].id=id;paint()})" style="margin-bottom:10px">
     <div class="row"><div style="flex:1;min-width:0"><div class="t">${m?esc(m.n):'выберите материал'}</div>
-    ${m?`<div class="xs mut">${esc(SEED.groups[m.g])} · сейчас ${qfmt(stockOf(m))} ${esc(baseOf(m))}</div>`:''}</div><span class="tag">выбрать</span></div></div>
+    ${m?`<div class="xs mut">${esc(groupName(m.g))} · сейчас ${qfmt(stockOf(m))} ${esc(baseOf(m))}</div>`:''}</div><span class="tag">выбрать</span></div></div>
    <div class="row" style="gap:8px;align-items:flex-end">
     <label class="f" style="flex:1;margin:0"><span>Сколько купили</span><input type="number" step="any" value="${esc(b.q)}" oninput="buyRows[${i}].q=this.value" onchange="paint()"></label>
     <label class="f" style="width:92px;margin:0"><span>&nbsp;</span><select onchange="buyRows[${i}].u=this.value;paint()">${bunits.map(x=>`<option ${x===bsel?'selected':''}>${x}</option>`).join('')}</select></label>
@@ -1266,18 +1280,64 @@ function doMake(){
  S.log.unshift({t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n});
  save();toast('Списано на '+n+' шт');renderMake()}
 
+/* ============ РАЗДЕЛЫ СПРАВОЧНИКА ============ */
+function openGroups(){push(groupsView)}
+function groupsView(){
+ const G=GROUPS(), keys=Object.keys(G);
+ const off=(S.groupsOff||[]).filter(k=>!G[k]);
+ return head('Разделы справочника','Ими сгруппированы материалы на складе')+`<div class="wrap" style="padding-top:12px">
+ <button class="btn full" style="margin-bottom:12px" onclick="addGroup()">+ Новый раздел</button>
+ <div class="list">${keys.map(g=>{const n=groupCount(g);
+   return `<div class="item" style="cursor:default"><div class="row">
+    <div style="flex:1;min-width:0"><div class="t">${esc(G[g])}</div>
+    <div class="xs mut">${n?'материалов: '+n:'пусто'}</div></div>
+    <a class="xs" onclick="renameGroup(${jq(g)})">переименовать</a>
+    ${n?'':`<a class="xs" style="color:var(--bad);margin-left:12px" onclick="hideGroup(${jq(g)})">убрать</a>`}
+   </div></div>`}).join('')}</div>
+ <p class="xs mut" style="margin-top:12px">Убрать можно только пустой раздел. На складе показываются лишь те разделы, в которых уже есть материалы — поэтому список фильтров там короче.</p>
+ ${off.length?`<h3 class="sm mut" style="margin:18px 0 8px">Убранные разделы</h3>
+   <div class="list">${off.map(g=>`<div class="item" style="cursor:default"><div class="row">
+    <div style="flex:1"><div class="t">${esc((S.groups&&S.groups[g])||SEED.groups[g]||g)}</div></div>
+    <a class="xs" onclick="showGroup(${jq(g)})">вернуть</a></div></div>`).join('')}</div>`:''}
+ <div style="height:8px"></div></div>`}
+function addGroup(){
+ const n=prompt('Название нового раздела\nНапример: Сухоцветы, Этикетки, Свечные гильзы');
+ if(!n||!n.trim())return;
+ const key='u'+Date.now();
+ S.groups=S.groups||{}; S.groups[key]=n.trim();
+ save();paint();toast('Раздел добавлен')}
+function renameGroup(g){
+ const cur=groupName(g);
+ const n=prompt('Новое название раздела',cur);
+ if(!n||!n.trim()||n.trim()===cur)return;
+ S.groups=S.groups||{}; S.groups[g]=n.trim();
+ save();paint();render();toast('Переименовано')}
+function hideGroup(g){
+ if(groupCount(g)){return toast('Сначала уберите из него материалы')}
+ S.groupsOff=[...new Set([...(S.groupsOff||[]),g])];
+ if(fMat===g)fMat='все';
+ save();paint();render();toast('Раздел убран')}
+function showGroup(g){
+ S.groupsOff=(S.groupsOff||[]).filter(x=>x!==g);
+ save();paint();render();toast('Раздел возвращён')}
+
 /* ============ КАТЕГОРИИ ============ */
 function openCats(){push(catsView)}
+const CATS_DEFAULT=['Интерьерные свечи','Формовые свечи','Контейнерные свечи','Гипсовый декор','Ароматизация','Наборы'];
+function addDefaultCats(){
+ S.cats=[...new Set([...(S.cats||[]),...CATS_DEFAULT])];
+ save();paint();render();toast('Типовые категории добавлены')}
 function catsView(){
  const cats=allCats();
  return head('Категории изделий','Ими группируется список на вкладке «Изделия»')+`<div class="wrap" style="padding-top:12px">
  <button class="btn full" style="margin-bottom:12px" onclick="addCat(false)">+ Новая категория</button>
+ ${cats.length<3?`<button class="btn g full" style="margin-bottom:12px" onclick="addDefaultCats()">Добавить типовые: ${CATS_DEFAULT.join(', ')}</button>`:''}
  ${cats.length?`<div class="list">${cats.map(c=>{const n=S.recipes.filter(r=>r.c===c).length;
    return `<div class="item" style="cursor:default"><div class="row">
     <div style="flex:1;min-width:0"><div class="t">${esc(c)}</div><div class="xs mut">изделий: ${n}</div></div>
     <a class="xs" onclick="renameCat(${jq(c)})">переименовать</a>
     <a class="xs" style="color:var(--bad);margin-left:12px" onclick="delCat(${jq(c)})">удалить</a>
-   </div></div>`}).join('')}</div>`:'<div class="empty">Категорий пока нет</div>'}
+   </div></div>`}).join('')}</div>`:'<div class="empty">Категорий пока нет. Добавьте свою или возьмите типовые кнопкой выше.</div>'}
  <p class="xs mut" style="margin-top:12px">Удалить можно только пустую категорию. Чтобы освободить — перенесите изделия в другую в их карточках.</p></div>`}
 function addCat(fromRecipe){
  const n=prompt('Название новой категории');
@@ -1346,7 +1406,7 @@ function impJSON(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader(
   catch(e){toast('Не удалось прочитать файл')}};rd.readAsText(f);inp.value=''}
 function expCSV(what){let rows;
  if(what==='mat')rows=[['Группа','Материал','Ед','Цена за ед','Остаток','Мин','В упаковке','Цена упаковки'],
-  ...S.materials.map(m=>[SEED.groups[m.g]||m.g,m.n,m.u,m.p,m.s,m.min,m.pq??'',m.pp??''])];
+  ...S.materials.map(m=>[groupName(m.g),m.n,m.u,m.p,m.s,m.min,m.pq??'',m.pp??''])];
  else rows=[['Категория','Изделие','Себестоимость','Коэффициент','Цена','Прибыль'],
   ...S.recipes.map(r=>{const {cost}=calc(r),p=priceOf(r,cost);return [r.c,r.n,cost.toFixed(2),(r.coef??S.settings.coef),p,(p-cost).toFixed(2)]})];
  dl((what==='mat'?'материалы':'изделия')+'.csv','\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n'),'text/csv');
