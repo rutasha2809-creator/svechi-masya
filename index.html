@@ -155,17 +155,20 @@ a{cursor:pointer}
 <main class="wrap">
 
 <section id="s-prod" class="on">
+  <button class="btn full" style="margin-bottom:12px" onclick="newRecipe()">+ Новое изделие</button>
   <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="q-prod" placeholder="Найти изделие"></div>
   <div class="chips" id="chips-prod"></div>
   <div class="list" id="list-prod"></div>
-  <button class="btn g full" style="margin-top:12px" onclick="newRecipe()">+ Новое изделие</button>
-  <button class="btn g full sm2" style="margin-top:8px" onclick="openCats()">Категории изделий — добавить свою</button>
+  <button class="btn g full sm2" style="margin-top:12px" onclick="openCats()">Категории изделий — добавить свою</button>
   <p class="xs mut" style="text-align:center;margin-top:10px">Нажмите на изделие, чтобы увидеть из чего складывается цена и поменять состав</p>
 </section>
 
 <section id="s-stock">
-  <button class="btn full" style="margin-bottom:12px" onclick="openBuy()">+ Внести закупку</button>
+  <div class="grid2" style="margin-bottom:12px">
+    <button class="btn" onclick="newMat()">+ Новый материал</button>
+    <button class="btn g" onclick="openBuy()">+ Внести закупку</button>
+  </div>
   <div class="row wrap2 xs" id="stock-sum" style="gap:6px;margin-bottom:12px"></div>
   <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="q-mat" placeholder="Найти материал"></div>
@@ -176,7 +179,6 @@ a{cursor:pointer}
     <label class="ck"><input type="checkbox" id="ck-low" onchange="onlyLow=this.checked;renderStock()"><span>на исходе</span></label>
   </div>
   <div class="list" id="list-mat"></div>
-  <button class="btn g full" style="margin-top:12px" onclick="newMat()">+ Новый материал</button>
 </section>
 
 <section id="s-make">
@@ -963,8 +965,7 @@ function renderStock(){
   document.getElementById('stock-sum').innerHTML='';
   document.getElementById('list-mat').innerHTML=`<div class="card">
    <h3 style="margin-bottom:8px">Справочник пуст</h3>
-   <p class="sm mut" style="margin:0 0 12px">Заведите первый материал — воск, фитиль, отдушку, коробку. Для каждого нужно название, единица измерения и цена. Цену проще всего задать через упаковку: «1000 г за 1200 ₽».</p>
-   <button class="btn full" onclick="newMat()">+ Новый материал</button></div>`;
+   <p class="sm mut" style="margin:0">Нажмите «+ Новый материал» наверху и заведите первый — воск, фитиль, отдушку, коробку. Понадобятся название, единица расхода и то, сколько вы купили и за сколько.</p></div>`;
   return;
  }
  document.getElementById('list-mat').innerHTML=rows.length?rows.map(m=>{
