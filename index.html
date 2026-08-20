@@ -632,6 +632,7 @@ function consume(m,amount,preferId){
  if(left>0&&order.length)order[order.length-1].q=(+order[order.length-1].q||0)-left;
  syncStock(m);
 }
+const byName=(a,b)=>String(a.n||'').localeCompare(String(b.n||''),'ru',{numeric:true,sensitivity:'base'});
 function GROUPS(){
  const all=Object.assign({},SEED.groups,S.groups||{});
  (S.groupsOff||[]).forEach(k=>{if(!S.materials.some(m=>m.g===k))delete all[k]});
@@ -672,6 +673,7 @@ function pickRender(title){
  const gs=['все',...Object.keys(GROUPS()).filter(g=>S.materials.some(m=>m.g===g))];
  const q=pickState.q.toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(pickState.group==='все'||m.g===pickState.group)&&m.n.toLowerCase().includes(q));
+ rows.sort(byName);
  const total=rows.length; rows=rows.slice(0,80);
  return head(title,'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -936,6 +938,7 @@ function renderStock(){
  const q=(document.getElementById('q-mat').value||'').toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(fMat==='все'||m.g===fMat)&&m.n.toLowerCase().includes(q));
  if(onlyUsed)rows=rows.filter(m=>used.has(m.id));
+ rows.sort(byName);
  const anyStock=S.materials.some(m=>stockOf(m)>0);
  if(onlyLow)rows=rows.filter(m=>isLow(m)||(+m.s||0)<=0);
  const lowN=S.materials.filter(m=>used.has(m.id)&&isLow(m)).length;
@@ -1407,7 +1410,7 @@ function impJSON(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader(
   catch(e){toast('Не удалось прочитать файл')}};rd.readAsText(f);inp.value=''}
 function expCSV(what){let rows;
  if(what==='mat')rows=[['Группа','Материал','Ед','Цена за ед','Остаток','Мин','В упаковке','Цена упаковки'],
-  ...S.materials.map(m=>[groupName(m.g),m.n,m.u,m.p,m.s,m.min,m.pq??'',m.pp??''])];
+  ...S.materials.slice().sort(byName).map(m=>[groupName(m.g),m.n,m.u,m.p,m.s,m.min,m.pq??'',m.pp??''])];
  else rows=[['Категория','Изделие','Себестоимость','Коэффициент','Цена','Прибыль'],
   ...S.recipes.map(r=>{const {cost}=calc(r),p=priceOf(r,cost);return [r.c,r.n,cost.toFixed(2),(r.coef??S.settings.coef),p,(p-cost).toFixed(2)]})];
  dl((what==='mat'?'материалы':'изделия')+'.csv','\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n'),'text/csv');
