@@ -638,6 +638,8 @@ function GROUPS(){
  (S.groupsOff||[]).forEach(k=>{if(!S.materials.some(m=>m.g===k))delete all[k]});
  return all;
 }
+function groupKeys(obj){const G=obj||GROUPS();
+ return Object.keys(G).sort((a,b)=>String(G[a]).localeCompare(String(G[b]),'ru',{numeric:true,sensitivity:'base'}))}
 function groupName(g){return GROUPS()[g]||(S.groups&&S.groups[g])||SEED.groups[g]||g}
 function groupCount(g){return S.materials.filter(m=>m.g===g&&!isPH(m)).length}
 const isPH=m=>/^(нет|-|—)$/i.test(String(m.n||'').trim());
@@ -670,7 +672,7 @@ let pickState=null;
 function pickMaterial(title,group,cb){
  pickState={cb,group:group||'все',q:''};window.__pick=cb;push(pickRender.bind(null,title))}
 function pickRender(title){
- const gs=['все',...Object.keys(GROUPS()).filter(g=>S.materials.some(m=>m.g===g))];
+ const gs=['все',...groupKeys().filter(g=>S.materials.some(m=>m.g===g))];
  const q=pickState.q.toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(pickState.group==='все'||m.g===pickState.group)&&m.n.toLowerCase().includes(q));
  rows.sort(byName);
@@ -687,7 +689,8 @@ function pickRender(title){
  <button class="btn g full" style="margin-top:12px" onclick="__pick(null);back()">Убрать материал из строки</button></div>`}
 
 /* ============ ИЗДЕЛИЯ ============ */
-function allCats(){return [...new Set([...(S.cats||[]),...S.recipes.map(r=>r.c)])].filter(Boolean)}
+function allCats(){return [...new Set([...(S.cats||[]),...S.recipes.map(r=>r.c)])].filter(Boolean)
+ .sort((a,b)=>String(a).localeCompare(String(b),'ru',{numeric:true,sensitivity:'base'}))}
 function nextRow(r){return Math.max(0,...(r.l||[]).map(x=>x.r),...(r.mk||[]).map(x=>x.r),
  ...(r.en||[]).map(x=>x.r),...(r.tl||[]).map(x=>x.r))+1}
 function renderProd(){
@@ -932,7 +935,7 @@ function savePrice(id){const m=MAT(id);
 function usedIds(){const s=new Set();for(const r of S.recipes)for(const l of r.l)if(l.m)s.add(l.m);return s}
 function renderStock(){
  const used=usedIds();
- const gs=['все',...Object.keys(GROUPS()).filter(g=>S.materials.some(m=>m.g===g))];
+ const gs=['все',...groupKeys().filter(g=>S.materials.some(m=>m.g===g))];
  document.getElementById('chips-mat').innerHTML=gs.map(g=>
   `<div class="chip ${g===fMat?'on':''}" onclick="fMat=${jq(g)};renderStock()">${g==='все'?'все':esc(groupName(g))}</div>`).join('');
  const q=(document.getElementById('q-mat').value||'').toLowerCase();
@@ -1019,7 +1022,7 @@ function matView(id){
  <div class="card"><h3 class="sm" style="margin-bottom:10px">Карточка материала</h3>
   <label class="f"><span>Название</span><input id="m-n" value="${esc(m.n)}"></label>
   <div class="grid2">
-   <label class="f"><span>Раздел справочника</span><select id="m-g">${Object.keys(GROUPS()).map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(groupName(g))}</option>`).join('')}${GROUPS()[m.g]?'':`<option value="${esc(m.g)}" selected>${esc(groupName(m.g))}</option>`}</select></label>
+   <label class="f"><span>Раздел справочника</span><select id="m-g">${groupKeys().map(g=>`<option value="${g}" ${g===m.g?'selected':''}>${esc(groupName(g))}</option>`).join('')}${GROUPS()[m.g]?'':`<option value="${esc(m.g)}" selected>${esc(groupName(m.g))}</option>`}</select></label>
    <label class="f"><span>Расходуется в</span><select id="m-u" ${L.length?'disabled':''}>${BASE_UNITS.map(x=>`<option ${x===base?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
   ${L.length?'<p class="xs mut" style="margin:-4px 0 12px">Единицу нельзя менять, пока есть партии — иначе остатки перестанут сходиться.</p>':''}
@@ -1130,7 +1133,7 @@ function newMatView(){
  return head('Новый материал','Заполните и нажмите «Создать»')+`<div class="wrap" style="padding-top:12px"><div class="card">
   <label class="f"><span>Что это за материал</span><input id="n-n" placeholder="Например: Пчелиный воск"></label>
   <div class="grid2">
-   <label class="f"><span>Раздел справочника</span><select id="n-g">${Object.keys(GROUPS()).map(g=>`<option value="${g}">${esc(groupName(g))}</option>`).join('')}</select></label>
+   <label class="f"><span>Раздел справочника</span><select id="n-g">${groupKeys().map(g=>`<option value="${g}">${esc(groupName(g))}</option>`).join('')}</select></label>
    <label class="f"><span>Расходуется в</span><select id="n-u" onchange="nmUnit()">${BASE_UNITS.map(x=>`<option ${x==='г'?'selected':''}>${x}</option>`).join('')}</select></label>
   </div>
   <p class="xs mut" style="margin:-4px 0 12px">В этих единицах пойдёт расход в рецептах и остаток на складе.</p>
@@ -1287,7 +1290,7 @@ function doMake(){
 /* ============ РАЗДЕЛЫ СПРАВОЧНИКА ============ */
 function openGroups(){push(groupsView)}
 function groupsView(){
- const G=GROUPS(), keys=Object.keys(G);
+ const G=GROUPS(), keys=groupKeys(G);
  const off=(S.groupsOff||[]).filter(k=>!G[k]);
  return head('Разделы справочника','Ими сгруппированы материалы на складе')+`<div class="wrap" style="padding-top:12px">
  <button class="btn full" style="margin-bottom:12px" onclick="addGroup()">+ Новый раздел</button>
