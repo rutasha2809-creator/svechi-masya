@@ -981,12 +981,15 @@ function lineView(row){
    <div class="row"><div style="flex:1;min-width:0"><div class="t">${m?esc(m.n):'не выбран'}</div>
    <div class="xs mut">${m?esc(groupName(m.g))+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u):'нажмите, чтобы выбрать'}</div></div>
    <span class="tag">выбрать</span></div></div>
-  ${m&&lotsOf(m).length?`<label class="f"><span>Из какой партии</span>
+  ${m&&lotsOf(m).length>1?`<label class="f"><span>Из какой партии</span>
     <select onchange="D.l.find(x=>x.r===${row}).lot=this.value||null;paint()">
      <option value="" ${!l.lot?'selected':''}>та, что в работе (по очереди)</option>
      ${sortedLots(m).map(z=>`<option value="${esc(z.id)}" ${l.lot===z.id?'selected':''}>${esc(lotLabel(m,z))}${z.d?' · '+lotDate(z):''}${(+z.q||0)<=0?' — израсходована':''}</option>`).join('')}
-    </select></label>
-   <div class="card tight sm" style="background:var(--soft);margin-bottom:12px">В расчёте: <b>${fmt(matPrice(m,l.lot),matPrice(m,l.lot)<1?3:2)} ₽ за 1 ${esc(baseOf(m))}</b></div>`
+    </select></label>`:''}
+  ${m&&lotsOf(m).length?`<div class="card tight sm" style="background:var(--soft);margin-bottom:12px">
+    В расчёте: <b>${fmt(matPrice(m,l.lot),matPrice(m,l.lot)<1?3:2)} ₽ за 1 ${esc(baseOf(m))}</b>
+    ${lotsOf(m).length===1?`<div class="xs mut" style="margin-top:4px">Закупка ${esc(lotLabel(m,sortedLots(m)[0]))}${sortedLots(m)[0].d?' от '+lotDate(sortedLots(m)[0]):''}. Партия одна — выбирать нечего.</div>`:''}
+   </div>`
    :(m?`<button class="btn g sm2 full" style="margin-bottom:12px" onclick="editPrice(${jq(l.m)})">Изменить цену этого материала</button>`:'')}
   <label class="f"><span>Сколько идёт на изделие</span>
    <select onchange="setRule(${row},this.value)">${QTYRULES.map(o=>`<option value="${o.v}" ${o.v===cur?'selected':''}>${o.n}</option>`).join('')}</select></label>
