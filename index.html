@@ -527,7 +527,7 @@ function allMonths(){
 }
 /* ============ ОБЩАЯ БАЗА ============ */
 const SB={url:'https://ahjfdswfafiborxplndr.supabase.co',key:'sb_publishable_BKIZ4v0bEBDZdu7glMh3pw_hVTFSSrH'};
-const AKEY='masya_auth_v1', MKEY='masya_mode_v1', BKEY='masya_bk_day_v1';
+const AKEY='masya_auth_v1', MKEY='masya_mode_v1', BKEY='masya_bk_day_v1', SKEY='masya_sync_v1';
 let RECTOK=null;         // токен из ссылки восстановления пароля
 let AU=null;            // сессия: {access_token,refresh_token,expires_at,email}
 let MODE=null;          // 'cloud' | 'local' | null (ещё не выбрано)
@@ -577,6 +577,18 @@ async function ensureToken(){
 }
 function sbLogout(){AU=null;authSave();MODE=null;lsDel(MKEY);stopPoll()}
 
+/* ---- неотправленные правки ----
+   Правка сначала ложится в этот браузер, в облако уходит через 1,2 с.
+   Если страницу закрыли или обновили раньше — правка осталась только здесь,
+   и следующий запуск, слепо забрав общую базу, её бы стёр (так «воскресло»
+   удалённое изделие). Поэтому помним: есть ли неотправленное и на какой
+   версии базы мы остановились. */
+function syncMark(dirty,ver){
+ const cur=syncState();
+ lsSet(SKEY,JSON.stringify({dirty:!!dirty, ver:(ver!=null?ver:cur.ver)}));
+}
+function syncState(){try{return JSON.parse(lsGet(SKEY)||'null')||{dirty:false,ver:0}}catch(e){return {dirty:false,ver:0}}}
+
 /* ---- чтение ---- */
 async function cloudPull(silent){
  if(MODE!=='cloud'||!AU)return null;
@@ -617,13 +629,21 @@ async function cloudPush(force){
   if(!rows.length){ CL.conflict=true; CL.busy=false; syncBadge(); return }
   CL.ver=rows[0].version; CL.at=rows[0].updated_at; CL.by=rows[0].updated_by;
   CL.err=null; CL.conflict=false;
+  syncMark(false,CL.ver);          // всё отправлено
  }catch(e){CL.err=e.message}
  CL.busy=false; syncBadge();
  if(CL.again){CL.again=false;setTimeout(()=>cloudPush(),300)}
 }
 function cloudSchedule(){
  if(MODE!=='cloud')return;
+ syncMark(true);                   // есть неотправленное
  clearTimeout(pushTimer); pushTimer=setTimeout(()=>{pushTimer=null;cloudPush()},1200); syncBadge();
+}
+/* Отправить немедленно: перед закрытием вкладки и после удалений. */
+function cloudFlush(){
+ if(MODE!=='cloud')return;
+ if(pushTimer){clearTimeout(pushTimer);pushTimer=null}
+ cloudPush();
 }
 /* ---- лёгкая проверка: только номер версии, без данных ---- */
 async function cloudVersion(){
@@ -647,7 +667,7 @@ async function cloudPoll(){
  if(!cur)return;
  if(cur.version>CL.ver){
   CL.ver=cur.version;
-  if(cur.data&&cur.data.materials){S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});save(true);
+  if(cur.data&&cur.data.materials){S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});save(true);syncMark(false,CL.ver);
    if(!document.getElementById('sheet').classList.contains('on')){render();toast('Обновлено: правки от «'+(CL.by||'коллеги')+'»')}}
  }
  syncBadge();
@@ -655,6 +675,28 @@ async function cloudPoll(){
 function startPoll(){stopPoll();pollTimer=setInterval(()=>{if(!document.hidden)cloudPoll()},20000)}
 function stopPoll(){clearInterval(pollTimer);pollTimer=null}
 
+/* ---- обычный запуск: чьи данные берём ----
+   Главное правило: неотправленные правки этого браузера не затираются
+   общей базой. Иначе удалённое изделие «воскресает» после обновления. */
+async function cloudBoot(){
+ const было=syncState();
+ const cur=await cloudPull(true);
+ if(cur){
+  if(было.dirty){
+   /* В прошлый раз правку не успели отправить. Никто с тех пор базу
+      не трогал — досылаем своё. Трогал — показываем выбор, но ничего
+      не затираем молча. */
+   CL.ver=было.ver||0;
+   if(cur.version===CL.ver){ await cloudPush(true) }
+   else { CL.conflict=true }
+  } else {
+   CL.ver=cur.version;
+   if(cur.data&&cur.data.materials){S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});save(true);syncMark(false,CL.ver);render()}
+  }
+ }
+ startPoll(); syncBadge(); bkAuto();
+ return true;
+}
 /* ---- первый вход: чьи данные берём ---- */
 async function cloudFirstSync(){
  const cur=await cloudPull(false);
@@ -672,7 +714,7 @@ async function cloudFirstSync(){
    S=cur.data; S.settings=Object.assign({},DEF_SET,S.settings||{}); save(true); toast('Данные загружены из общей базы');
   }
  }
- startPoll(); bkAuto(); return true;
+ startPoll(); syncMark(false,CL.ver); bkAuto(); return true;
 }
 /* ---- резервные копии в общей базе (таблица app_backups) ---- */
 const BK_KEEP=14;
@@ -1061,7 +1103,7 @@ function dupRecipe(){const c=JSON.parse(JSON.stringify(D));c.id='r'+Date.now();c
  S.recipes.push(c);save();toast('Копия создана');openRecipe(c.id)}
 function resetRecipe(){if(!confirm('Вернуть состав, как он был в Excel? Все ваши правки этого изделия пропадут.'))return;
  D=JSON.parse(JSON.stringify(seedOf(Did)));saveDraft();toast('Возвращён исходный состав')}
-function delRecipe(){if(!confirm('Удалить изделие «'+D.n+'»?'))return;S.recipes=S.recipes.filter(x=>x.id!==Did);save();closeAll();toast('Удалено')}
+function delRecipe(){if(!confirm('Удалить изделие «'+D.n+'»?'))return;S.recipes=S.recipes.filter(x=>x.id!==Did);save();cloudFlush();closeAll();toast('Удалено')}
 /* В изделие добавляются только материалы. Упаковки в этом списке нет: её
    стоимость заложена в наценку вместе с общепроизводственными расходами,
    а коробки, ленты и открытки выбираются один раз на весь заказ. */
@@ -2510,7 +2552,7 @@ function cloudResolve(mine){
  CL.conflict=false; CL.wipe=false;
  if(mine){cloudPush(true).then(()=>{toast('Ваша версия сохранена в общей базе');syncBadge()})}
  else{cloudPull(false).then(cur=>{if(cur){CL.ver=cur.version;S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});
-   save(true);closeAll();render();syncBadge();toast('Загружена версия из общей базы')}})}
+   save(true);syncMark(false,CL.ver);closeAll();render();syncBadge();toast('Загружена версия из общей базы')}})}
 }
 function renderCloudCard(){
  const el=document.getElementById('cloud-box'); if(!el)return;
@@ -2557,13 +2599,13 @@ render();
  if(MODE==='cloud'&&AU){
   const ok=await ensureToken();
   if(!ok){gateShow();gateLogin();return}
-  const cur=await cloudPull(true);
-  if(cur){CL.ver=cur.version;
-   if(cur.data&&cur.data.materials){S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});save(true);render()}}
-  startPoll(); syncBadge(); bkAuto();
+  await cloudBoot();
  }else if(MODE!=='local'){ gateShow(); }
 })();
 addEventListener('online',()=>{CL.err=null;syncBadge();cloudPoll()});
 addEventListener('offline',()=>syncBadge());
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)cloudPoll()});
+/* Уходя со страницы — дослать то, что ещё не ушло. */
+addEventListener('pagehide',()=>cloudFlush());
+addEventListener('beforeunload',()=>cloudFlush());
+document.addEventListener('visibilitychange',()=>{document.hidden?cloudFlush():cloudPoll()});
 </script></body></html>

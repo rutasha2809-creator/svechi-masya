@@ -75,6 +75,10 @@ cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stop
   Object.defineProperty(out,'pickRec',{get:function(){return pickRec},set:function(v){pickRec=v},configurable:true});
   Object.defineProperty(out,'ordId',{get:function(){return ordId},set:function(v){ordId=v},configurable:true});
   Object.defineProperty(out,'avgYM',{get:function(){return avgYM},set:function(v){avgYM=v},configurable:true});
+  /* синхронизация с общей базой — нужна sync-test.js */
+  Object.defineProperty(out,'CL',{get:function(){return CL},set:function(v){CL=v},configurable:true});
+  Object.defineProperty(out,'MODE',{get:function(){return MODE},set:function(v){MODE=v},configurable:true});
+  Object.defineProperty(out,'AU',{get:function(){return AU},set:function(v){AU=v},configurable:true});
 })();`;
 
   // --- заглушки браузера: ровно столько, сколько нужно расчётам ---
