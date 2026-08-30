@@ -18,6 +18,10 @@ const T = require('./harness.js');
 const app = T.loadApp();
 const S = T.withEmpty(app);
 
+/* Косвенные расходы (ОПР и ОХР) в этом тесте выключены: он про средневзвешенную
+   цену материалов, а не про них. Их собственный тест — markup-test.js. */
+S.settings.opr = 0; S.settings.ohr = 0;
+
 const МЕС1 = Date.UTC(2026, 3, 15, 12); // апрель 2026
 const МЕС2 = Date.UTC(2026, 4, 15, 12); // май 2026
 

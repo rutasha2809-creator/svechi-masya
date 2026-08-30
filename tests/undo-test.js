@@ -16,6 +16,10 @@ const T = require('./harness.js');
 const app = T.loadApp();
 const S = T.withEmpty(app);
 
+/* Косвенные расходы (ОПР и ОХР) в этом тесте выключены: он не про них,
+   а про отмену записей в журнале. Их собственный тест — markup-test.js. */
+S.settings.opr = 0; S.settings.ohr = 0;
+
 const воск = { id: 'm::w', g: 'wax', n: 'Воск', u: 'г', bu: 'кг', p: 0, s: 0, min: 0, x: {}, lots: [] };
 const фитиль = { id: 'm::f', g: 'wick', n: 'Фитиль', u: 'см', bu: 'м', p: 0, s: 0, min: 0, x: {}, lots: [] };
 S.materials.push(воск, фитиль);

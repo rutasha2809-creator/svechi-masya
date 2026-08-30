@@ -18,6 +18,10 @@ const T = require('./harness.js');
 const app = T.loadApp();
 const S = T.withEmpty(app);
 
+/* Косвенные расходы (ОПР и ОХР) в этом тесте выключены: он не про них,
+   а про партии и цены закупок. Их собственный тест — markup-test.js. */
+S.settings.opr = 0; S.settings.ohr = 0;
+
 const воск = { id: 'wax::тест', g: 'wax', n: 'Воск', u: 'г', bu: 'кг', p: 0, s: 0, min: 0, x: {}, lots: [] };
 S.materials.push(воск);
 
