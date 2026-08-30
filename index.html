@@ -216,16 +216,12 @@ a{cursor:pointer}
       <label class="f"><span>Электроэнергия, ₽/кВт·ч</span><input id="st-kwt" type="number" step="0.1" inputmode="decimal"></label>
       <label class="f"><span>«На исходе» — меньше % от закупки</span><input id="st-low" type="number" inputmode="numeric"></label>
     </div>
-    <label class="f"><span>Себестоимость считать</span><select id="st-base">
-      <option value="lot">по цене выбранной партии</option>
-      <option value="avg">по средневзвешенной за месяц</option>
-    </select></label>
-    <p class="xs mut" id="st-base-hint" style="margin:-4px 0 12px"></p>
+    <p class="xs mut" style="margin:-4px 0 12px">Себестоимость считается по цене той закупки, которая выбрана в строке состава, — а если не выбрана, по той, что «в работе».</p>
     <button class="btn full" onclick="saveSettings()">Сохранить</button>
   </div>
   <div class="card">
     <h3 style="margin-bottom:4px">Ведомость по средневзвешенной</h3>
-    <p class="sm mut" style="margin:0 0 12px">Помесячно по каждому материалу: остаток на начало, приход, средняя за месяц, списание и остаток на конец.</p>
+    <p class="sm mut" style="margin:0 0 12px">Отчёт для бухгалтера: помесячно по каждому материалу — остаток на начало, приход, средняя за месяц, списание и остаток на конец. На себестоимость и цены изделий не влияет: они считаются по цене партии.</p>
     <button class="btn g full" onclick="openAvg()">Открыть ведомость</button>
   </div>
   <div class="card">
@@ -354,7 +350,11 @@ function derive(r){
   return d;
 }
 
-function costBase(){const b=S&&S.settings&&S.settings.base;return b==='avg'?'avg':'lot'}
+/* Себестоимость всегда считается по цене конкретной партии.
+   Решение владельца от 31.08.2026: средневзвешенную в ценах не используем.
+   Сама она никуда не делась — считается в «Ведомости по средневзвешенной»
+   («Ещё» → «Ведомость»), это отчёт для бухгалтера, на цены он не влияет. */
+function costBase(){return 'lot'}
 function calc(r,mode){
   mode = (mode==='avg'||mode==='lot') ? mode : costBase();
   const p=r.p||{}, d=derive(r), rowcost={}, qtys={}, det=[];
@@ -861,7 +861,6 @@ function seedOf(id){return SEED.recipes.find(x=>x.id===id)}
 
 function recipeView(){
  const r=D,{cost,det,d}=calc(r),pr=priceOf(r,cost);
- const CB=costBase(), CC=costs(r);
  const coef=(r.coef!=null?r.coef:S.settings.coef);
  const anyStock=S.materials.some(m=>stockOf(m)>0);
  const cm=anyStock?canMake(r):{n:null,lack:[]};
@@ -889,21 +888,12 @@ function recipeView(){
    <button class="btn g sm2" onclick="openRecipe('${Did}')">Отменить</button></div>`:''}
  <div class="kpi" style="margin-bottom:12px">
   <div><div class="l">Себестоимость</div><div class="v num">${fmt(cost,0)} ₽</div>
-   <div class="xs mut">${CB==='avg'?'по средневзвешенной':'по цене партии'}</div></div>
+   <div class="xs mut">по цене партии</div></div>
   <div><div class="l">Цена продажи</div><div class="v num" style="color:var(--acc)">${fmt(pr,0)} ₽</div></div>
   <div><div class="l">Прибыль с изделия</div><div class="v num" style="color:var(--ok)">${fmt(pr-cost,0)} ₽</div></div>
   <div ${cm.n==null?`onclick="closeAll();tab('stock')" style="cursor:pointer"`:''}>
    <div class="l">Хватит материалов</div>
    <div class="v num">${cm.n==null?'<span class="sm" style="color:var(--acc)">внести остатки</span>':cm.n+' шт'}</div></div>
- </div>
- <div class="card tight sm" style="margin-bottom:12px">
-  <div class="row"><span class="sp">По цене конкретной партии</span>
-   <b class="num">${fmt(CC.lot,2)} ₽</b>${CB==='lot'?'<span class="tag ok" style="margin-left:8px">в цене</span>':''}</div>
-  <div class="row" style="margin-top:6px"><span class="sp">По средневзвешенной за месяц</span>
-   <b class="num">${fmt(CC.avg,2)} ₽</b>${CB==='avg'?'<span class="tag ok" style="margin-left:8px">в цене</span>':''}</div>
-  <div class="xs mut" style="margin-top:8px">Разница ${fmt(Math.abs(CC.avg-CC.lot),2)} ₽.
-   Цена продажи считается от отмеченной. <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Ещё»</a> ·
-   <a href="#" onclick="openAvg();return false">Ведомость по месяцам</a></div>
  </div>
  ${cm.n===0&&cm.lack.length?`<div class="card tight sm warnbox">Не хватает: ${esc(cm.lack.slice(0,4).join(', '))}${cm.lack.length>4?' и ещё '+(cm.lack.length-4):''}</div>`:''}
  <div class="card">
@@ -1205,19 +1195,17 @@ function matView(id){
   <div><div class="l">Лежит на сумму</div><div class="v num">${fmt(val,0)} <span class="sm mut">₽</span></div></div>
  </div>
  <button class="btn full" style="margin-bottom:12px" onclick="openBuy(${jq(id)})">Внести закупку</button>
- ${L.length?(()=>{const av=avgPrice(m), расх=Math.abs(av-pr)>0.005, AVG=costBase()==='avg';
-  return `<div class="card tight sm" style="margin-bottom:12px">
-  <div class="row"><span class="sp">Цена партии «в работе»</span><b class="num">${fmt(pr,pr<1?3:2)} ₽/${esc(base)}</b>${AVG?'':'<span class="tag ok" style="margin-left:8px">в расчёте</span>'}</div>
-  <div class="row" style="margin-top:6px"><span class="sp">Средневзвешенная за ${esc(ymLabel(curYM()).toLowerCase())}</span>
-   <b class="num">${fmt(av,av<1?3:2)} ₽/${esc(base)}</b>${AVG?'<span class="tag ok" style="margin-left:8px">в расчёте</span>':''}</div>
-  ${расх?`<div class="xs mut" style="margin-top:8px">Цифры разные, потому что закупки были по разной цене: «в работе» — цена той закупки, которая расходуется сейчас, а средневзвешенная — средняя по всем закупкам месяца. Списания на неё не влияют.</div>`:''}
-  <div class="xs mut" style="margin-top:8px"><a href="#" onclick="openAvg();return false">Ведомость по месяцам</a></div>
- </div>`})():''}
+ ${L.length?`<div class="card tight sm" style="margin-bottom:12px">
+  <div class="row"><span class="sp">Цена партии «в работе»</span><b class="num">${fmt(pr,pr<1?3:2)} ₽/${esc(base)}</b>
+   <span class="tag ok" style="margin-left:8px">в расчёте</span></div>
+  <div class="xs mut" style="margin-top:8px">По этой цене материал идёт в себестоимость.
+   <a href="#" onclick="openAvg();return false">Ведомость по месяцам</a> — отчёт для бухгалтера, на цены не влияет.</div>
+ </div>`:''}
  <div class="card">
   <div class="row" style="margin-bottom:6px"><h3 class="sm">Партии</h3><span class="sp"></span>
    <span class="xs mut">${!L.length&&pr>0?'в расчёте: '+fmt(pr,pr<1?3:2)+' ₽/'+esc(base):''}</span></div>
   ${lotsHtml}
-  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе».${costBase()==='avg'?' Себестоимость сейчас считается по средневзвешенной, поэтому на цену изделия выбор партии не влияет.':' В составе изделия можно выбрать конкретную партию.'}</p>`:''}
+  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе». В составе изделия можно выбрать конкретную партию.</p>`:''}
  </div>
  ${!L.length?`<div class="card">
    <h3 class="sm" style="margin-bottom:8px">Цена без партий</h3>
@@ -1545,8 +1533,9 @@ function avgView(){
    <p class="sm mut" style="margin:0">Ведомость наполняется закупками и выпусками. Внесите закупку на складе или спишите материалы во вкладке «Выпуск».</p></div>`}
  <div class="card tight sm" style="margin-top:12px">
   <b>Как считается.</b> Средняя за месяц = (сумма остатка на начало + сумма всех закупок месяца) ÷ (количество на начало + закупленное количество).
-  По этой цене списывается всё, что ушло в производство в этом месяце. Остаток на конец переходит на начало следующего месяца.
-  Себестоимость уже выпущенных партий задним числом не меняется — она зафиксирована в журнале в момент выпуска.
+  По этой цене в ведомости списывается всё, что ушло в производство в этом месяце. Остаток на конец переходит на начало следующего месяца.
+  <br><br><b>На цены изделий эта ведомость не влияет.</b> Себестоимость считается по цене конкретной закупки — той, что выбрана в строке состава,
+  или той, что «в работе». Ведомость нужна бухгалтеру для учёта и сверки, это отдельный отчёт.
  </div></div>`;
 }
 
@@ -1639,11 +1628,6 @@ function renderMore(){
  document.getElementById('st-round').value=S.settings.round;
  document.getElementById('st-kwt').value=S.settings.kwt;
  document.getElementById('st-low').value=S.settings.low;
- const bs=document.getElementById('st-base'); if(bs)bs.value=costBase();
- const bh=document.getElementById('st-base-hint');
- if(bh)bh.innerHTML=costBase()==='avg'
-  ? 'Материал списывается по средней за месяц: (остаток на начало + все закупки месяца) ÷ (количество на начало + закупленное количество). Выбор партии в составе изделия на цену не влияет.'
-  : 'В расчёт идёт цена той закупки, которая выбрана в строке состава. Средневзвешенная при этом всё равно считается и видна в карточке изделия и в ведомости.';
  const box=document.getElementById('data-box');
  if(box)box.innerHTML = S.demo
   ? `${MODE==='cloud'?'<div class="card tight sm warnbox" style="margin-bottom:12px">Вы в общей базе — эти две кнопки меняют данные у всех участников.</div>':''}
@@ -1671,7 +1655,6 @@ function saveSettings(){
  const v=parseFloat(document.getElementById('st-round').value);S.settings.round=isFinite(v)&&v>=0?v:0;
  S.settings.kwt=parseFloat(document.getElementById('st-kwt').value)||0;
  S.settings.low=parseFloat(document.getElementById('st-low').value)||0;
- const bs=document.getElementById('st-base'); if(bs)S.settings.base=(bs.value==='avg'?'avg':'lot');
  save();toast('Сохранено');render()}
 function dl(name,text,type){const b=new Blob([text],{type:type||'application/json'});const a=document.createElement('a');
  a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
