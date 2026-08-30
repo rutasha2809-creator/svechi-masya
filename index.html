@@ -74,9 +74,9 @@ display:inline-flex;align-items:center;gap:7px;justify-content:center;transition
 .item:active{background:var(--soft)}
 .item.on{border-color:var(--acc);background:var(--soft)}
 table .tot td{border-top:2px solid var(--line);padding-top:9px;background:var(--soft)}
-.ck{flex:none;width:22px;height:22px;margin-right:10px;border:2px solid var(--line);border-radius:6px;
+.ckb{flex:none;width:22px;height:22px;margin-right:10px;border:2px solid var(--line);border-radius:6px;
  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;line-height:1}
-.ck.on{background:var(--acc);border-color:var(--acc)}
+.ckb.on{background:var(--acc);border-color:var(--acc)}
 .pickbar{position:sticky;bottom:0;left:0;right:0;padding:10px 0 4px;background:linear-gradient(to bottom,transparent,var(--bg) 22%)}
 .item .t{font-weight:600;font-size:14px;line-height:1.3}
 .hsep{height:1px;background:var(--line);margin:10px -14px}
@@ -819,7 +819,7 @@ function pickRender(title){
  ${M&&выбраны.length?`<div class="chips" style="margin-bottom:10px">${выбраны.map(m=>`<div class="chip on" onclick="pickToggle(${jq(m.id)})">${esc(m.n)} ×</div>`).join('')}</div>`:''}
  <div class="list" ${M?'style="padding-bottom:64px"':''}>${rows.map(m=>{const on=M&&sel.includes(m.id);
   return `<div class="item ${on?'on':''}" onclick="${M?`pickToggle(${jq(m.id)})`:`__pick(${jq(m.id)});back()`}">
-   <div class="row">${M?`<span class="ck ${on?'on':''}">${on?'✓':''}</span>`:''}
+   <div class="row">${M?`<span class="ckb ${on?'on':''}">${on?'✓':''}</span>`:''}
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
    <div class="xs mut">${esc(groupName(m.g))} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
    ${(+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:''}</div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
@@ -991,6 +991,15 @@ function addLine(k){
 let lotOpen=null;
 function editLine(row){lotOpen=null;push(lineView.bind(null,row))}
 function toggleLot(row){lotOpen=(lotOpen===row?null:row);paint()}
+/* Выбор партии сохраняем сразу. Раньше он менял только черновик изделия,
+   и если мастер уходил, не нажав «Сохранить», выбор пропадал. */
+function pickLot(row,v){
+ const L=D.l.find(x=>x.r===row); if(!L)return;
+ L.lot=v||null; lotOpen=null;
+ const i=S.recipes.findIndex(x=>x.id===Did);
+ if(i>=0){S.recipes[i]=JSON.parse(JSON.stringify(D));save();toast(v?'Партия выбрана':'Берём ту, что в работе')}
+ paint();
+}
 function addOther(kind){
  /* Амортизируемые предметы выбираются так же, как материалы — галочками:
     в одном изделии их обычно несколько (воскоплав, весы, термометр, фен). */
@@ -1102,7 +1111,7 @@ function priceBox(l,m,row){
  return `<div class="card tight sm" style="background:var(--soft);margin-bottom:12px">
   В расчёте: <b>${fmt(price,price<1?3:2)} ₽ за 1 ${esc(base)}</b>
   <div class="xs mut" style="margin-top:4px">${sub}</div>
-  ${(!AVG&&n>1&&lotOpen===row)?`<select style="margin-top:10px" onchange="D.l.find(x=>x.r===${row}).lot=this.value||null;lotOpen=null;paint()">
+  ${(!AVG&&n>1&&lotOpen===row)?`<select style="margin-top:10px" onchange="pickLot(${row},this.value)">
     <option value="" ${!l.lot?'selected':''}>та, что в работе (по очереди)</option>
     ${LOTS.map(z=>`<option value="${esc(z.id)}" ${l.lot===z.id?'selected':''}>${esc(lotLabel(m,z))}${z.d?' · '+lotDate(z):''}${(+z.q||0)<=0?' — израсходована':''}</option>`).join('')}
    </select>`:''}
@@ -2061,7 +2070,7 @@ function pickRecView(title){
   <span class="sp"></span>${sel.length?`<a style="color:var(--bad)" onclick="pickRec.sel=[];paint()">очистить</a>`:''}</div>
  <div class="list" style="padding-bottom:64px">${rows.map(r=>{const on=sel.includes(r.id);const p=priceOf(r,calc(r).cost);
   return `<div class="item ${on?'on':''}" onclick="pickRecToggle(${jq(r.id)})"><div class="row">
-   <span class="ck ${on?'on':''}">${on?'✓':''}</span>
+   <span class="ckb ${on?'on':''}">${on?'✓':''}</span>
    <div style="flex:1;min-width:0"><div class="t">${esc(r.n)}</div><div class="xs mut">${esc(r.c||'')}</div></div>
    <b class="num sm">${fmt(p,0)} ₽</b></div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
  <div class="pickbar"><button class="btn full" ${sel.length?'':'disabled'} onclick="pickRecDone()">Добавить в заказ${sel.length?' ('+sel.length+')':''}</button></div>
@@ -2270,7 +2279,7 @@ function newRecipeView(){
   <div class="f"><span>Из чего изделие</span>
    <div class="list" style="margin-top:2px">${Object.keys(KINDS).map(k=>`
     <div class="item ${newKind===k?'on':''}" onclick="setNewKind('${k}')"><div class="row">
-     <span class="ck ${newKind===k?'on':''}" style="border-radius:50%">${newKind===k?'✓':''}</span>
+     <span class="ckb ${newKind===k?'on':''}" style="border-radius:50%">${newKind===k?'✓':''}</span>
      <div style="flex:1;min-width:0"><div class="t">${KINDS[k].n}</div>
      <div class="xs mut">${KINDS[k].d}</div></div></div></div>`).join('')}</div></div>
   <label class="f" style="margin-top:12px"><span>Категория</span>
