@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#24486a">
-<title>Свечи Мася — себестоимость и склад</title>
+<title>Prime — себестоимость и склад</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -162,7 +162,7 @@ a{cursor:pointer}
 </style>
 <header><div class="wrap">
   <div class="logo">✦</div>
-  <h1>Свечи Мася</h1>
+  <h1>Prime</h1>
   <span class="pill" id="hpill">—</span>
 </div></header>
 
@@ -730,7 +730,7 @@ async function bkRestore(id){
 }
 async function bkDown(id){
  const row=await bkData(id); if(!row||!row.data)return;
- dl('свечи-мася-копия-'+String(row.made_at||'').slice(0,10)+'.json',JSON.stringify(row.data,null,1));
+ dl('prime-backup-'+String(row.made_at||'').slice(0,10)+'.json',JSON.stringify(row.data,null,1));
  toast('Файл скачан');
 }
 async function renderBk(){
@@ -2301,7 +2301,7 @@ function saveSettings(){
  save();toast('Сохранено');render()}
 function dl(name,text,type){const b=new Blob([text],{type:type||'application/json'});const a=document.createElement('a');
  a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
-function expJSON(){dl('свечи-мася-база-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(S,null,1));toast('Файл скачан')}
+function expJSON(){dl('prime-base-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(S,null,1));toast('Файл скачан')}
 function impJSON(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader();
  rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!o.materials||!o.recipes)throw 0;
   S=o;S.settings={...DEF_SET,...(o.settings||{})};save();toast('База загружена');render()}
@@ -2414,7 +2414,7 @@ function gateShow(){
  g.style.display='flex';
  g.innerHTML=`<div class="gate-in">
   <div class="logo" style="width:44px;height:44px;border-radius:13px;font-size:22px;margin-bottom:14px">✦</div>
-  <h2 style="margin-bottom:6px">Свечи Мася</h2>
+  <h2 style="margin-bottom:6px">Prime</h2>
   <p class="sm mut" style="margin:0 0 18px">Расчёт себестоимости и склад материалов</p>
   <div id="gate-body"></div>
  </div>`;

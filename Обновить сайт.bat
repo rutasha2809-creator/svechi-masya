@@ -3,7 +3,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ============================================
-echo   OBNOVLENIE SAYTA - Svechi Masya
+echo   OBNOVLENIE SAYTA - Prime
 echo   https://rutasha2809-creator.github.io/svechi-masya/
 echo ============================================
 
