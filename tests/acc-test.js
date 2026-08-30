@@ -64,9 +64,7 @@ T.check(app.mkAccOf(изделие, 11) === null, '«никуда» тоже п�
 app.setMkAcc(11, 'ohr');
 
 T.head('Выпуск записывает начисления в журнал');
-app.document.getElementById('mk-rec').value = 'r1';
-app.document.getElementById('mk-qty').value = '5';
-app.doMake();
+app.makeBatch(app.REC('r1'), 5);
 const выпуск = S.log.find(e => e.t === 'make');
 T.check(!!выпуск.acc, 'разбивка записана');
 // себестоимость: воск 100 ₽ → ОПР 10 ₽, ОХР 2 ₽ на изделие, × 5 штук

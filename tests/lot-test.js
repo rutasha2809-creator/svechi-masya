@@ -57,9 +57,7 @@ T.near(app.calc(изделие, 'lot').cost, 100, 0.01, 'без выбора п�
 T.near(app.calc(изделие, 'lot').cost, 150, 0.01, 'выбрана вторая партия: 100 г × 1,5 ₽');
 
 T.head('Выпуск списывает выбранную партию');
-app.document.getElementById('mk-rec').value = 'r-test';
-app.document.getElementById('mk-qty').value = '3';
-app.doMake();
+app.makeBatch(app.REC('r-test'), 3);
 T.near(партии[0].q, 2000, 0.0001, 'первая партия не тронута, г');
 T.near(партии[1].q, 1000 - 300, 0.0001, 'из второй списано 3 × 100 г');
 T.near(app.stockOf(воск), 2700, 0.0001, 'на складе стало, г');

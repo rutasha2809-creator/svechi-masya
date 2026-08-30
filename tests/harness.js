@@ -63,7 +63,7 @@ cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stop
 ;(function(){
   var out=globalThis;
   out.__toasts=[];
-  out.doBuy=doBuy; out.doMake=doMake; out.consume=consume; out.newLot=newLot;
+  out.doBuy=doBuy; out.consume=consume; out.newLot=newLot;
   out.conv=conv; out.baseOf=baseOf; out.stockOf=stockOf; out.valueOf_=valueOf;
   out.sortedLots=sortedLots; out.activeLot=activeLot; out.lotById=lotById; out.matPrice=matPrice;
   out.syncStock=syncStock; out.save=save; out.allCats=allCats; out.usage=usage; out.canMake=canMake;

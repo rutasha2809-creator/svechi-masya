@@ -55,7 +55,8 @@ const должноБыть = {
   'списание со склада': 'function consume(',
   'ведомость по средневзвешенной': 'function ledger(',
   'средняя цена за месяц': 'function avgPrice(',
-  'выпуск партии': 'function doMake(',
+  'списание материалов': 'function shipDo(',
+  'журнал движений': 'function renderLog(',
   'закупка': 'function doBuy(',
   'синхронизация с общей базой': 'function cloudSchedule(',
 };

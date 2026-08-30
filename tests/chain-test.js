@@ -118,9 +118,7 @@ T.near(расход[коробка.id], 1, 0.0001, 'коробка, шт');
 T.check(!(форма.id in расход), 'форма в списание НЕ попадает — она только в амортизации');
 
 T.head('Шаг 8. Выпуск партии');
-app.document.getElementById('mk-rec').value = свеча.id;
-app.document.getElementById('mk-qty').value = '10';
-app.doMake();
+app.makeBatch(свеча, 10);
 T.near(app.stockOf(воск), 5000 - waxNet * 10, 0.0001, 'воска осталось, г');
 T.near(app.stockOf(фитиль), 1000 - 150, 0.0001, 'фитиля осталось, см');
 T.near(app.stockOf(коробка), 40, 0.0001, 'коробок осталось, шт');
@@ -205,7 +203,7 @@ const экран = (имя, fn) => {
 app.D = свеча; app.Did = свеча.id;
 экран('Изделия', app.renderProd);
 экран('Склад', app.renderStock);
-экран('Выпуск', app.renderMake);
+экран('Журнал движений', app.renderLog);
 экран('Ещё', app.renderMore);
 экран('Карточка изделия', app.recipeView);
 экран('Строка состава', () => app.lineView(1));

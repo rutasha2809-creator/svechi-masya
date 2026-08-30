@@ -191,18 +191,8 @@ a{cursor:pointer}
     <label class="ck"><input type="checkbox" id="ck-low" onchange="onlyLow=this.checked;renderStock()"><span>на исходе</span></label>
   </div>
   <div class="list" id="list-mat"></div>
-</section>
-
-<section id="s-make">
-  <div class="card">
-    <h3 style="margin-bottom:12px">Что выпускаем</h3>
-    <label class="f"><span>Изделие</span><select id="mk-rec"></select></label>
-    <label class="f"><span>Сколько штук</span><input id="mk-qty" type="number" inputmode="numeric" value="1"></label>
-    <div id="mk-check"></div>
-    <button class="btn full" style="margin-top:12px" onclick="doMake()">Списать материалы со склада</button>
-  </div>
-  <h3 class="sm mut" style="margin:16px 0 8px">История: закупки и выпуски</h3>
-  <p class="xs mut" style="margin:-4px 0 8px">Ошиблись при вводе — отмените запись и заведите заново. Выпуск вернёт материалы на склад, закупка уберёт свою партию.</p>
+  <h3 class="sm mut" style="margin:18px 0 8px">История: закупки и списания</h3>
+  <p class="xs mut" style="margin:-4px 0 8px">Ошиблись при вводе — отмените запись и заведите заново. Списание вернёт материалы на склад, закупка уберёт свою партию.</p>
   <div class="list" id="list-log"></div>
 </section>
 
@@ -283,7 +273,6 @@ a{cursor:pointer}
 <nav><div class="wrap">
   <button class="on" data-s="prod" onclick="tab('prod')"><svg viewBox="0 0 24 24"><path d="M12 3c1.6 2 2.5 3.4 2.5 4.8A2.5 2.5 0 0 1 12 10a2.5 2.5 0 0 1-2.5-2.2C9.5 6.4 10.4 5 12 3z"/><rect x="6" y="10" width="12" height="11" rx="2.5"/></svg>Изделия</button>
   <button data-s="stock" onclick="tab('stock')"><svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>Склад</button>
-  <button data-s="make" onclick="tab('make')"><svg viewBox="0 0 24 24"><path d="M12 3v4"/><path d="M5.5 7.5l2.5 2.5"/><path d="M18.5 7.5L16 10"/><rect x="6" y="10" width="12" height="11" rx="2.5"/></svg>Выпуск</button>
   <button data-s="orders" onclick="tab('orders')"><svg viewBox="0 0 24 24"><path d="M6 4h12l1.5 16H4.5L6 4z"/><path d="M9 8a3 3 0 0 0 6 0"/></svg>Заказы</button>
   <button data-s="more" onclick="tab('more')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Ещё</button>
 </div></nav>
@@ -1157,6 +1146,7 @@ function savePrice(id){const m=MAT(id);
 /* ============ СКЛАД ============ */
 function usedIds(){const s=new Set();for(const r of S.recipes)for(const l of r.l)if(l.m)s.add(l.m);return s}
 function renderStock(){
+ renderLog();
  const used=usedIds();
  const gs=['все',...groupKeys().filter(g=>S.materials.some(m=>m.g===g))];
  document.getElementById('chips-mat').innerHTML=gs.map(g=>
@@ -1473,28 +1463,85 @@ function doBuy(upd){
  if(!n)return toast('Заполните хотя бы одну позицию');
  save();toast('Записано позиций: '+n);back()}
 
-/* ============ ВЫПУСК ============ */
-function renderMake(){
- if(!S.recipes.length){
-  document.getElementById('mk-check').innerHTML='';
-  document.getElementById('mk-rec').innerHTML='';
-  document.getElementById('list-log').innerHTML=`<div class="card"><h3 style="margin-bottom:8px">Сначала создайте изделие</h3>
-   <p class="sm mut" style="margin:0">Выпуск списывает материалы по составу изделия. Как только появится хотя бы одно изделие — здесь можно будет отметить партию.</p></div>`;
-  return;
+/* ============ СПИСАНИЕ МАТЕРИАЛОВ ============
+   Списывает только заказ — отдельной вкладки «Выпуск» больше нет.
+   Заказ «для своих целей» списывает так же, но без выручки и налога.   */
+
+/* Что уйдёт со склада: изделия по составу × количество + упаковка заказа. */
+function shipUsage(строки){
+ const need={}, партии={};
+ for(const x of строки){
+  if(x.rid){
+   const r=REC(x.rid); if(!r)continue;
+   const u=usage(r), n=+x.q||0;
+   for(const id in u){
+    need[id]=(need[id]||0)+u[id]*n;
+    const line=(r.l||[]).find(y=>y.m===id&&y.lot);
+    if(line&&!партии[id])партии[id]=line.lot;
+   }
+  } else if(x.mid){
+   need[x.mid]=(need[x.mid]||0)+(+x.q||0);
+  }
  }
- const s=document.getElementById('mk-rec'),keep=s.value;
- s.innerHTML=S.recipes.map(r=>`<option value="${r.id}">${esc(r.n)}</option>`).join('');
- if(keep)s.value=keep; s.onchange=mkCheck; document.getElementById('mk-qty').oninput=mkCheck;
- mkCheck();
+ return {need,партии};
+}
+/* Хватит ли материалов и чего именно не хватает */
+function shipCheck(строки){
+ const {need}=shipUsage(строки); const мало=[]; let позиций=0;
+ for(const id in need){
+  const m=MAT(id); if(!m||!need[id])continue; позиций++;
+  const есть=stockOf(m);
+  if(есть<need[id])мало.push({m,надо:need[id],есть});
+ }
+ return {ok:!мало.length,мало,позиций,need};
+}
+/* Само списание. Одна запись в журнале на всю операцию. */
+function shipDo(строки,подпись,extra){
+ const {need,партии}=shipUsage(строки);
+ let cost=0, штук=0;
+ const acc={opr:0,ohr:0};
+ for(const x of строки){
+  if(!x.rid)continue;
+  const r=REC(x.rid); if(!r)continue;
+  const n=+x.q||0; штук+=n;
+  const c=calc(r);
+  cost+=c.cost*n;
+  for(const y of c.det){ if(y.k!=='k')continue;
+   const k=mkAccOf(r,y.row); if(k)acc[k]+=(+y.c||0)*n }
+ }
+ for(const x of строки){
+  if(!x.mid)continue;
+  const m=MAT(x.mid); if(m)cost+=matPrice(m)*(+x.q||0);
+ }
+ const use=[];
+ for(const id in need){
+  const m=MAT(id); if(!m||!need[id])continue;
+  use.push({id,n:m.n,q:need[id]});
+  consume(m,need[id],партии[id]||null);
+ }
+ const запись=Object.assign({g:logKey(),t:'make',d:Date.now(),n:подпись,q:штук,
+   cost:rnd(cost,2),base:costBase(),use,acc:{opr:rnd(acc.opr,2),ohr:rnd(acc.ohr,2)}},extra||{});
+ S.log.unshift(запись);
+ return запись;
+}
+/* Списать партию одного изделия — используется тестами и как основа заказа. */
+function makeBatch(r,n){
+ if(!r||!(n>0))return null;
+ return shipDo([{rid:r.id,q:n}],'Выпуск: '+r.n,{id:r.id});
+}
+
+/* ---- журнал движений: живёт на вкладке «Склад» ---- */
+function renderLog(){
+ const el=document.getElementById('list-log'); if(!el)return;
  const logs=S.log.slice(0,50);
- document.getElementById('list-log').innerHTML=logs.length?logs.map(l=>{
+ el.innerHTML=logs.length?logs.map(l=>{
   const g=logIdOf(l), info=logUndoInfo(l);
   const кнопка=`<div class="row" style="margin-top:6px"><span class="sp"></span>
     <a class="xs" style="color:${info.ok?'var(--bad)':'var(--mut)'}" onclick="logUndo(${jq(g)})"
-     >${info.ok?(l.t==='make'?'отменить выпуск':'удалить закупку'):'почему нельзя удалить'}</a></div>`;
+     >${info.ok?(l.t==='make'?'отменить списание':'удалить закупку'):'почему нельзя удалить'}</a></div>`;
   return l.t==='make'
   ?`<div class="item" style="cursor:default"><div class="row"><div style="flex:1;min-width:0">
-    <div class="t">Выпуск: ${esc(l.n)} × ${l.q}</div><div class="xs mut">${new Date(l.d).toLocaleString('ru-RU')}</div></div>
+    <div class="t">${esc(l.n)}${l.q?' · '+l.q+' шт':''}</div><div class="xs mut">${new Date(l.d).toLocaleString('ru-RU')}</div></div>
     <div class="b num">−${fmt(l.cost,0)} ₽</div></div>${кнопка}</div>`
   :`<div class="item" style="cursor:default"><div class="row"><div style="flex:1;min-width:0">
     <div class="t">Закупка: ${esc(l.n)}</div><div class="xs mut">${new Date(l.d).toLocaleString('ru-RU')}</div></div>
@@ -1502,40 +1549,6 @@ function renderMake(){
     <div class="xs mut num">${l.sum?fmt(l.sum,0)+' ₽':''}</div></div></div>${кнопка}</div>`}).join('')
   :'<div class="empty">Пока пусто</div>';
 }
-function mkCheck(){
- const r=REC(document.getElementById('mk-rec').value);if(!r)return;
- const n=Math.max(1,parseInt(document.getElementById('mk-qty').value)||1);
- const u=usage(r),{cost}=calc(r);let rows='',ok=true,cnt=0;
- for(const id in u){const m=MAT(id);if(!m||!u[id])continue;cnt++;
-  const need=u[id]*n,have=stockOf(m),bad=have<need;if(bad)ok=false;
-  rows+=`<tr><td>${esc(m.n)}</td><td class="num">${qfmt(need)} ${esc(baseOf(m))}</td>
-   <td class="num" style="color:${bad?'var(--bad)':'var(--ok)'}">${qfmt(have)}</td></tr>`}
- document.getElementById('mk-check').innerHTML=`
-  <div class="kpi" style="margin-bottom:10px">
-   <div><div class="l">Себестоимость партии</div><div class="v num">${fmt(cost*n,0)} ₽</div></div>
-   <div><div class="l">Выручка по цене</div><div class="v num" style="color:var(--acc)">${fmt(priceOf(r,cost)*n,0)} ₽</div></div></div>
-  ${ok?'':'<div class="card tight sm warnbox">Материалов не хватает. Списать всё равно можно, но остаток уйдёт в минус.</div>'}
-  <details ${ok?'':'open'}><summary>Что спишется со склада — ${cnt} позиций</summary>
-  <table><thead><tr><th>Материал</th><th>Нужно</th><th>Есть</th></tr></thead><tbody>${rows}</tbody></table></details>`}
-function doMake(){
- const r=REC(document.getElementById('mk-rec').value);
- const n=Math.max(1,parseInt(document.getElementById('mk-qty').value)||1);
- if(!confirm(`Списать материалы на ${n} шт «${r.n}»?`))return;
- const u=usage(r),{cost,det}=calc(r),use=[];
- /* Сколько этим выпуском начислено на общепроизводственные и общехозяйственные —
-    считаем один раз и кладём в журнал: потом ведомость берёт цифры отсюда,
-    а не пересчитывает старые выпуски по нынешним процентам. */
- const acc={opr:0,ohr:0};
- for(const x of det){ if(x.k!=='k')continue;
-  const k=mkAccOf(r,x.row); if(k)acc[k]+=(+x.c||0)*n }
- acc.opr=rnd(acc.opr,2); acc.ohr=rnd(acc.ohr,2);
- for(const id in u){const m=MAT(id);if(!m)continue;
-  const line=r.l.find(x=>x.m===id&&x.lot);
-  const need=u[id]*n;
-  use.push({id:id,n:m.n,q:need});
-  consume(m,need,line?line.lot:null)}
- S.log.unshift({g:logKey(),t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n,base:costBase(),use:use,acc:acc});
- save();toast('Списано на '+n+' шт');renderMake()}
 
 /* ============ ВЕДОМОСТЬ ПО СРЕДНЕВЗВЕШЕННОЙ ============ */
 let avgYM=null;
@@ -1759,14 +1772,27 @@ function orders(){S.orders=S.orders||[];return S.orders}
 function orderItemsSum(o){return rnd((o.items||[]).reduce((a,x)=>a+(+x.price||0)*(+x.q||0),0),2)}
 function orderPackSum(o){return rnd((o.pack||[]).reduce((a,x)=>a+(+x.price||0)*(+x.q||0),0),2)}
 /* Упаковку клиент оплачивает — она входит в стоимость заказа и в базу налога. */
-function orderSum(o){return rnd(orderItemsSum(o)+orderPackSum(o),2)}
+function orderSum(o){return o&&o.own?0:rnd(orderItemsSum(o)+orderPackSum(o),2)}
+/* Себестоимость заказа: изделия по составу + упаковка по закупочной цене. */
+function orderCost(o){
+ let c=0;
+ for(const x of (o.items||[])){const r=REC(x.rid); if(r)c+=calc(r).cost*(+x.q||0)}
+ for(const x of (o.pack||[])){const m=MAT(x.mid); if(m)c+=matPrice(m)*(+x.q||0)}
+ return rnd(c,2);
+}
+/* Строки для списания: изделия и упаковка заказа. */
+function orderLines(o){
+ return [...(o.items||[]).map(x=>({rid:x.rid,q:+x.q||0})),
+         ...(o.pack||[]).map(x=>({mid:x.mid,q:+x.q||0}))].filter(x=>x.q>0);
+}
+function orderShipped(o){return !!(o&&o.ship&&o.ship.g)}
 function orderTax(o){return rnd(orderSum(o)*taxPct(o.tax)/100,2)}
 function orderNet(o){return rnd(orderSum(o)-orderTax(o),2)}
 
 /* налог за месяц: начислено по заказам и отметка об оплате */
 function taxPaidMap(){S.taxPaid=S.taxPaid||{};return S.taxPaid}
 function taxMonth(ym){
- const list=orders().filter(o=>ymOf(o.d)===ym);
+ const list=orders().filter(o=>ymOf(o.d)===ym&&!o.own);
  const по={none:0,fiz:0,ur:0}, налог={none:0,fiz:0,ur:0};
  list.forEach(o=>{const k=TAXES[o.tax]?o.tax:'none';
   по[k]+=orderSum(o); налог[k]+=orderTax(o)});
@@ -1819,14 +1845,16 @@ function renderOrders(){
     <div class="xs mut">${t.оплата?'оплачен':'не оплачен'}</div></div>
    <div><div class="l">К получению</div><div class="v num" style="color:var(--ok)">${fmt(rnd(t.выручка-t.всего,2),0)} ₽</div></div>
   </div>
+  ${(()=>{const ns=L.filter(o=>!orderShipped(o)&&orderLines(o).length).length;
+   return ns?`<div class="card tight sm warnbox" style="margin-bottom:12px">Без списания материалов: ${ns}. Откройте заказ и нажмите «Списать материалы со склада» — иначе остатки не уменьшатся.</div>`:''})()}
   <button class="btn full" onclick="newOrder()">+ Новый заказ</button>`;
  document.getElementById('list-ord').innerHTML=L.length?L.map(o=>{
-  const s=orderSum(o), n=orderTax(o), поз=(o.items||[]).length;
+  const s=orderSum(o), n=orderTax(o), поз=(o.items||[]).length+(o.pack||[]).length;
   return `<div class="item" onclick="openOrder(${jq(o.id)})"><div class="row">
    <div style="flex:1;min-width:0">
-    <div class="t">${esc(o.n||'Заказ без названия')}</div>
-    <div class="xs mut">${o.d?new Date(o.d).toLocaleDateString('ru-RU'):''} · позиций: ${поз}${n?' · налог '+fmt(n,2)+' ₽':' · без налога'}</div></div>
-   <div style="text-align:right"><div class="b num">${fmt(s,0)} ₽</div>
+    <div class="t">${esc(o.n||'Заказ без названия')}${o.own?' <span class="tag">для своих</span>':''}${orderShipped(o)?' <span class="tag ok">списано</span>':''}</div>
+    <div class="xs mut">${o.d?new Date(o.d).toLocaleDateString('ru-RU'):''} · позиций: ${поз}${o.own?' · себестоимость '+fmt(orderCost(o),0)+' ₽':(n?' · налог '+fmt(n,2)+' ₽':' · без налога')}</div></div>
+   <div style="text-align:right"><div class="b num">${o.own?'':fmt(s,0)+' ₽'}</div>
     ${n?`<div class="xs mut num">− ${fmt(n,0)} ₽</div>`:''}</div></div></div>`}).join('')
   :`<div class="card"><h3 style="margin-bottom:8px">Заказов пока нет</h3>
     <p class="sm mut" style="margin:0">Заказ — это то, что продано клиенту. Соберите его из изделий, выберите налог, и он попадёт в итог за месяц.</p></div>`;
@@ -1866,6 +1894,27 @@ function ordItemPrice(rid,v){
 function ordItemDel(rid){
  const o=ORD(ordId);if(!o)return;
  o.items=o.items.filter(x=>x.rid!==rid);save();paint()}
+function ordShip(){
+ const o=ORD(ordId); if(!o)return;
+ if(orderShipped(o))return toast('Материалы по этому заказу уже списаны');
+ const строки=orderLines(o);
+ if(!строки.length)return toast('Сначала добавьте изделия или упаковку');
+ const c=shipCheck(строки);
+ const предупреждение=c.ok?'':'\n\nМатериалов не хватает: '+
+   c.мало.slice(0,5).map(x=>x.m.n+' — надо '+qfmt(x.надо)+', есть '+qfmt(x.есть)).join('; ')+
+   (c.мало.length>5?' и ещё '+(c.мало.length-5):'')+'\nСписать всё равно можно, но остаток уйдёт в минус.';
+ if(!confirm('Списать материалы по заказу «'+(o.n||'без названия')+'»?\n\nПозиций со склада: '+c.позиций+предупреждение))return;
+ const подпись=(o.own?'Для своих: ':'Заказ: ')+(o.n||'без названия');
+ const запись=shipDo(строки,подпись,{oid:o.id});
+ o.ship={g:запись.g,d:запись.d};
+ save();render();paint();toast('Материалы списаны')}
+function ordUnship(){
+ const o=ORD(ordId); if(!o||!orderShipped(o))return;
+ const e=LOG(o.ship.g);
+ if(!e){o.ship=null;save();paint();return toast('Запись о списании не найдена — отметка снята')}
+ logUndo(o.ship.g);
+ if(!LOG(o.ship.g)){o.ship=null;save();paint()}
+}
 function ordAddPack(){
  const o=ORD(ordId);if(!o)return;
  o.pack=o.pack||[];
@@ -1905,28 +1954,52 @@ function ordRefreshPrices(){
 function orderView(){
  const o=ORD(ordId);
  if(!o)return head('Заказ')+'<div class="wrap"><div class="empty">Заказ не найден</div></div>';
- const s=orderSum(o), налог=orderTax(o), нетто=orderNet(o);
+ const s=orderSum(o), налог=orderTax(o), нетто=orderNet(o), себест=orderCost(o);
  const дата=new Date(o.d-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
  return head(o.n||'Новый заказ','Заказ')+`<div class="wrap" style="padding-top:12px">
  <div class="kpi" style="margin-bottom:12px">
+  ${o.own?`
+  <div><div class="l">Себестоимость</div><div class="v num">${fmt(себест,0)} ₽</div>
+   <div class="xs mut">во что обошлось</div></div>
+  <div><div class="l">Позиций</div><div class="v num">${(o.items||[]).length+(o.pack||[]).length}</div></div>
+  `:`
   <div><div class="l">Стоимость заказа</div><div class="v num">${fmt(s,0)} ₽</div>
    <div class="xs mut">${orderPackSum(o)?'изделия '+fmt(orderItemsSum(o),0)+' + упаковка '+fmt(orderPackSum(o),0):'изделия'}</div></div>
   <div><div class="l">Налог</div><div class="v num" style="color:var(--warn)">${fmt(налог,0)} ₽</div>
    <div class="xs mut">${taxPct(o.tax)?taxPct(o.tax)+' %':'не начисляется'}</div></div>
   <div><div class="l">К получению</div><div class="v num" style="color:var(--ok)">${fmt(нетто,0)} ₽</div></div>
+  <div><div class="l">Себестоимость</div><div class="v num">${fmt(себест,0)} ₽</div></div>
+  `}
  </div>
+ ${(() => {const c=shipCheck(orderLines(o));
+  return orderShipped(o)
+  ? `<div class="card tight sm" style="background:var(--soft);margin-bottom:12px">
+     <div class="row"><span class="tag ok">материалы списаны</span><span class="sp"></span>
+      <span class="xs mut">${esc(new Date(o.ship.d).toLocaleString('ru-RU'))}</span></div>
+     <div class="row" style="margin-top:8px"><span class="sp"></span>
+      <a class="xs" style="color:var(--bad)" onclick="ordUnship()">отменить списание</a></div></div>`
+  : `<div class="card" style="margin-bottom:12px">
+     ${!c.ok&&c.мало.length?`<div class="card tight sm warnbox" style="margin-bottom:10px">Не хватает: ${
+       c.мало.slice(0,4).map(x=>esc(x.m.n)+' — надо '+qfmt(x.надо)+' '+esc(baseOf(x.m))+', есть '+qfmt(x.есть)).join('; ')
+       }${c.мало.length>4?' и ещё '+(c.мало.length-4):''}. Списать всё равно можно, но остаток уйдёт в минус.</div>`:''}
+     <button class="btn full" ${c.позиций?'':'disabled'} onclick="ordShip()">Списать материалы со склада${c.позиций?' — позиций: '+c.позиций:''}</button>
+     <p class="xs mut" style="margin:10px 0 0">Спишется всё, что нужно на изделия заказа по их составу, и упаковка. Пока не нажали — склад не тронут.</p></div>`})()}
  <div class="card">
   <label class="f"><span>Название или клиент</span>
    <input value="${esc(o.n||'')}" placeholder="Например: Иванова, подарочный набор" onchange="ordSet('n',this.value.trim())"></label>
   <div class="grid2">
    <label class="f"><span>Дата</span>
     <input type="date" value="${дата}" onchange="ordSet('d',this.value?new Date(this.value+'T12:00:00').getTime():Date.now())"></label>
-   <label class="f"><span>Налог</span>
+   ${o.own?'':`<label class="f"><span>Налог</span>
     <select onchange="ordSet('tax',this.value)">
      ${Object.keys(TAXES).map(k=>`<option value="${k}" ${o.tax===k?'selected':''}>${esc(TAXES[k].n)}</option>`).join('')}
-    </select></label>
+    </select></label>`}
   </div>
-  <p class="xs mut" style="margin:-4px 0 0">Налог считается от стоимости заказа вместе с упаковкой: ${fmt(s,2)} ₽ × ${taxPct(o.tax)} % = ${fmt(налог,2)} ₽.</p>
+  <label class="ck" style="margin-top:4px"><input type="checkbox" ${o.own?'checked':''}
+    onchange="ordSet('own',this.checked)"><span>не в заказ — для своих целей</span></label>
+  <p class="xs mut" style="margin:6px 0 0">${o.own
+   ? 'Витрина, образцы, подарки, задел впрок. Материалы спишутся так же, но выручки и налога нет — в итог месяца этот заказ не попадёт.'
+   : 'Налог считается от стоимости заказа вместе с упаковкой: '+fmt(s,2)+' ₽ × '+taxPct(o.tax)+' % = '+fmt(налог,2)+' ₽.'}</p>
  </div>
  <div class="card">
   <div class="row" style="margin-bottom:10px"><h3 class="sm">Что в заказе</h3><span class="sp"></span>
@@ -2335,7 +2408,6 @@ function render(){
  syncBadge();
  if(tab_==='prod')renderProd();
  if(tab_==='stock')renderStock();
- if(tab_==='make')renderMake();
  if(tab_==='orders')renderOrders();
  if(tab_==='more'){renderMore();renderCloudCard()}
 }

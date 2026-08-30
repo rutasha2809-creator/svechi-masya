@@ -34,9 +34,7 @@ app.buyRows = [{ id: воск.id, q: '2', s: '2000', u: 'кг' }, { id: фити
 app.doBuy();
 T.near(app.stockOf(воск), 2000, 0.0001, 'воска на складе, г');
 T.near(app.stockOf(фитиль), 1000, 0.0001, 'фитиля на складе, см');
-app.document.getElementById('mk-rec').value = 'r1';
-app.document.getElementById('mk-qty').value = '3';
-app.doMake();
+app.makeBatch(app.REC('r1'), 3);
 T.near(app.stockOf(воск), 1700, 0.0001, 'после выпуска воска, г');
 T.near(app.stockOf(фитиль), 970, 0.0001, 'после выпуска фитиля, см');
 T.check(S.log.length === 3, 'в журнале три записи: две закупки и выпуск');
@@ -67,8 +65,7 @@ app.doBuy();
 const партии = app.sortedLots(воск);
 партии[1].d = партии[0].d + 86400000;
 свеча.l[0].lot = партии[1].id;          // в рецепте выбрана вторая партия
-app.document.getElementById('mk-qty').value = '2';
-app.doMake();
+app.makeBatch(свеча, 2);
 T.near(партии[0].q, 2000, 0.0001, 'первая партия не тронута');
 T.near(партии[1].q, 1000 - 200, 0.0001, 'списано из второй');
 app.logUndo(app.logIdOf(S.log.find(e => e.t === 'make')));
@@ -88,10 +85,9 @@ T.near(app.stockOf(фитиль), 0, 0.0001, 'остаток фитиля обн
 T.check(app.sortedLots(фитиль).length === 0, 'партия удалена');
 
 T.head('Закупку, из которой уже списывали, удалить нельзя');
-app.document.getElementById('mk-qty').value = '1';
 app.buyRows = [{ id: фитиль.id, q: '5', s: '150', u: 'м' }];
 app.doBuy();
-app.doMake();                                  // спишет из свежей партии фитиля и первой воска
+app.makeBatch(свеча, 1);                                  // спишет из свежей партии фитиля и первой воска
 const закупкаВоска = S.log.filter(e => e.t === 'buy' && e.id === воск.id).pop();
 const и3 = app.logUndoInfo(закупкаВоска);
 T.check(и3.ok === false, 'удалить нельзя');
@@ -125,12 +121,11 @@ T.check(!S.log.includes(старая), 'запись убрана');
 T.head('Экран журнала строится и показывает ссылки');
 app.buyRows = [{ id: воск.id, q: '1', s: '1000', u: 'кг' }];
 app.doBuy();
-app.document.getElementById('mk-qty').value = '1';
-app.doMake();
+app.makeBatch(свеча, 1);
 try {
-  app.renderMake();
+  app.renderLog();
   const html = app.document.getElementById('list-log').innerHTML;
-  T.check(html.includes('отменить выпуск'), 'у выпуска есть ссылка «отменить выпуск»');
+  T.check(html.includes('отменить списание'), 'у списания есть ссылка «отменить списание»');
   T.check(html.includes('почему нельзя удалить') || html.includes('удалить закупку'),
     'у закупки есть ссылка — либо удалить, либо объяснение');
 } catch (e) { T.bad('журнал упал: ' + e.message); }
