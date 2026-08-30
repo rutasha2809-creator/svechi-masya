@@ -72,6 +72,11 @@ display:inline-flex;align-items:center;gap:7px;justify-content:center;transition
 .list{display:flex;flex-direction:column;gap:8px}
 .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;transition:.12s}
 .item:active{background:var(--soft)}
+.item.on{border-color:var(--acc);background:var(--soft)}
+.ck{flex:none;width:22px;height:22px;margin-right:10px;border:2px solid var(--line);border-radius:6px;
+ display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;line-height:1}
+.ck.on{background:var(--acc);border-color:var(--acc)}
+.pickbar{position:sticky;bottom:0;left:0;right:0;padding:10px 0 4px;background:linear-gradient(to bottom,transparent,var(--bg) 22%)}
 .item .t{font-weight:600;font-size:14px;line-height:1.3}
 .hsep{height:1px;background:var(--line);margin:10px -14px}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -325,13 +330,16 @@ function derive(r){
   for(const Sx of ['A','B']){
     const wf=(r.wr&&r.wr[Sx])||'';
     const vw=+p['volWax_'+Sx]||0, vt=+p['volTea_'+Sx]||0, cc=+p['candleCount_'+Sx]||1;
+    /* Масса воска с отдушкой = объём × 0,95. Без округления: в Excel здесь
+       стояло округление до десятков — 280 мл давали 270 г вместо 266, и это
+       приписывало изделию лишние граммы. Владелец: округления быть не должно. */
     let raw;
-    if(wf.includes('*0.95*')) raw = vt? rnd(vt*0.95*cc,0) : rnd(vw*0.95*cc,0);
-    else if(/0\.95,-1/.test(wf)) raw = rnd(vw*0.95,-1);
-    else if(/0\.95,0/.test(wf)) raw = rnd(vw*0.95,0);
+    if(wf.includes('*0.95*')) raw = vt? vt*0.95*cc : vw*0.95*cc;
+    else if(/0\.95/.test(wf)) raw = vw*0.95;
     else raw = +p['waxRaw_'+Sx]||0;
+    /* Воск без отдушки = масса / (100 + % отдушки) × 100, тоже без округления. */
     const pc=+p['fragrPct_'+Sx]||0;
-    const net = raw? rnd(raw/(pc+100)*100,0) : 0;
+    const net = raw? raw/(pc+100)*100 : 0;
     d['waxRaw_'+Sx]=raw; d['waxNet_'+Sx]=net; d['fragrMass_'+Sx]=raw-net;
   }
   let g=0;
@@ -760,23 +768,54 @@ function head(title,sub){return `<div class="shead">${stack.length>1?`<div class
 /* ---- общий выбор из списка ---- */
 let pickState=null;
 function pickMaterial(title,group,cb){
- pickState={cb,group:group||'все',q:''};window.__pick=cb;push(pickRender.bind(null,title))}
+ pickState={cb,group:group||'все',q:'',multi:false,sel:[]};window.__pick=cb;push(pickRender.bind(null,title))}
+/* Тот же список, но с галочками: отмечаете сколько нужно позиций и добавляете разом.
+   Используется везде, где в изделие добавляют строки — материалы, упаковку,
+   амортизируемые предметы. Подпись внизу и текст кнопки задаются через opt. */
+function pickMany(title,group,cb,opt){
+ pickState={cb,group:group||'все',q:'',multi:true,sel:[],opt:opt||{}};
+ window.__pickMany=cb;push(pickRender.bind(null,title))}
+function pickToggle(id){
+ const s=pickState.sel, i=s.indexOf(id);
+ if(i<0)s.push(id); else s.splice(i,1);
+ paint()}
+function pickAllShown(ids){
+ const s=pickState.sel;
+ const все=ids.every(id=>s.includes(id));
+ pickState.sel = все ? s.filter(id=>!ids.includes(id)) : [...new Set([...s,...ids])];
+ paint()}
+function pickDone(){
+ const s=pickState.sel.slice(), cb=window.__pickMany;
+ back(); if(cb)cb(s)}
 function pickRender(title){
  const gs=['все',...groupKeys().filter(g=>S.materials.some(m=>m.g===g))];
  const q=pickState.q.toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)&&(pickState.group==='все'||m.g===pickState.group)&&m.n.toLowerCase().includes(q));
  rows.sort(byName);
  const total=rows.length; rows=rows.slice(0,80);
- return head(title,'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
+ const M=!!pickState.multi, O=pickState.opt||{}, sel=pickState.sel||[];
+ const выбраны=sel.map(id=>MAT(id)).filter(Boolean);
+ const видимые=rows.map(m=>m.id);
+ const всеОтмечены=видимые.length&&видимые.every(id=>sel.includes(id));
+ return head(title,M?(O.hint||'Отметьте всё, что нужно — добавится сразу'):'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
  <input id="pk-q" placeholder="Начните вводить название" value="${esc(pickState.q)}" oninput="pickState.q=this.value;paint();setTimeout(()=>{const e=document.getElementById('pk-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)},0)"></div>
  <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?'все разделы':esc(groupName(g))}</div>`).join('')}</div>
- <div class="list">${rows.map(m=>`<div class="item" onclick="__pick(${jq(m.id)});back()">
-   <div class="row"><div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
+ ${M?`<div class="row xs" style="margin-bottom:8px">
+   <span class="mut">${выбраны.length?'Отмечено: '+выбраны.length:'Пока ничего не отмечено'}</span><span class="sp"></span>
+   ${видимые.length?`<a onclick='pickAllShown(${JSON.stringify(видимые)})'>${всеОтмечены?'снять показанные':'отметить все показанные'}</a>`:''}
+   ${выбраны.length?`<a style="margin-left:12px;color:var(--bad)" onclick="pickState.sel=[];paint()">очистить</a>`:''}
+  </div>`:''}
+ ${M&&выбраны.length?`<div class="chips" style="margin-bottom:10px">${выбраны.map(m=>`<div class="chip on" onclick="pickToggle(${jq(m.id)})">${esc(m.n)} ×</div>`).join('')}</div>`:''}
+ <div class="list" ${M?'style="padding-bottom:64px"':''}>${rows.map(m=>{const on=M&&sel.includes(m.id);
+  return `<div class="item ${on?'on':''}" onclick="${M?`pickToggle(${jq(m.id)})`:`__pick(${jq(m.id)});back()`}">
+   <div class="row">${M?`<span class="ck ${on?'on':''}">${on?'✓':''}</span>`:''}
+   <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
    <div class="xs mut">${esc(groupName(m.g))} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
-   ${(+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:''}</div></div>`).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
+   ${(+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:''}</div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
  ${total>80?`<p class="xs mut" style="text-align:center;margin-top:10px">Показано 80 из ${total} — уточните поиск</p>`:''}
- <button class="btn g full" style="margin-top:12px" onclick="__pick(null);back()">Убрать материал из строки</button></div>`}
+ ${M?`<div class="pickbar"><button class="btn full" ${выбраны.length?'':'disabled'} onclick="pickDone()">${esc(O.btn||'Добавить в изделие')}${выбраны.length?' ('+выбраны.length+')':''}</button></div>`
+ :`<button class="btn g full" style="margin-top:12px" onclick="__pick(null);back()">Убрать материал из строки</button>`}</div>`}
 
 /* ============ ИЗДЕЛИЯ ============ */
 function allCats(){return [...new Set([...(S.cats||[]),...S.recipes.map(r=>r.c)])].filter(Boolean)
@@ -921,17 +960,53 @@ function resetRecipe(){if(!confirm('Вернуть состав, как он б�
  D=JSON.parse(JSON.stringify(seedOf(Did)));saveDraft();toast('Возвращён исходный состав')}
 function delRecipe(){if(!confirm('Удалить изделие «'+D.n+'»?'))return;S.recipes=S.recipes.filter(x=>x.id!==Did);save();closeAll();toast('Удалено')}
 function addLine(k){
- const row=Math.max(0,...D.l.map(l=>l.r))+1;
- D.l.push({r:row,lb:k==='pack'?'упаковка':'материал',g:k==='pack'?'box':'wax',m:null,q:{type:'const',value:1},fp:0,cf:'mul'});
- editLine(row);
+ /* Открываем список с галочками: обычно в изделие нужна не одна позиция,
+    а сразу несколько — коробка и наполнитель, воск и отдушка, и так далее. */
+ const упак = k==='pack';
+ pickMany(упак?'Упаковка изделия':'Материалы изделия', упак?'box':'все', ids=>{
+  if(!ids||!ids.length)return;
+  let row=Math.max(0,...D.l.map(l=>l.r));
+  let первая=null;
+  for(const id of ids){
+   const m=MAT(id); if(!m)continue;
+   row++;
+   D.l.push({r:row, lb:упак?'упаковка':'материал', g:m.g, m:id,
+             q:{type:'const',value:1}, fp:0, cf:'mul'});
+   if(первая==null)первая=row;
+  }
+  save();
+  if(ids.length===1&&первая!=null){editLine(первая);toast('Добавлено — укажите количество')}
+  else {paint();toast('Добавлено позиций: '+ids.length+' — укажите количество в каждой')}
+ },{hint:упак?'Коробки, ленты, наклейки, тишью — отметьте всё, что кладёте в изделие'
+              :'Отметьте все материалы сразу — количество укажете потом',
+    btn:'Добавить в изделие'});
 }
 let lotOpen=null;
 function editLine(row){lotOpen=null;push(lineView.bind(null,row))}
 function toggleLot(row){lotOpen=(lotOpen===row?null:row);paint()}
 function addOther(kind){
+ /* Амортизируемые предметы выбираются так же, как материалы — галочками:
+    в одном изделии их обычно несколько (воскоплав, весы, термометр, фен). */
+ if(kind==='t'){
+  pickMany('Оборудование и формы','tool',ids=>{
+   if(!ids||!ids.length)return;
+   D.tl=D.tl||[];
+   let первая=null;
+   for(const id of ids){
+    const m=MAT(id); if(!m)continue;
+    const row=nextRow(D);
+    D.tl.push({r:row,m:id,lb:'амортизация оборудования',v:0});
+    if(первая==null)первая=row;
+   }
+   save();
+   if(ids.length===1&&первая!=null){editOther('t',первая);toast('Добавлено')}
+   else {paint();toast('Добавлено предметов: '+ids.length)}
+  },{hint:'Воскоплав, весы, термометр, фен, формы — отметьте всё, что участвует в изделии',
+     btn:'Добавить в амортизацию'});
+  return;
+ }
  const row=nextRow(D);
  if(kind==='e'){D.en=D.en||[];D.en.push({r:row,rate:S.settings.kwt,h:0.5,kw:1})}
- if(kind==='t'){D.tl=D.tl||[];D.tl.push({r:row,m:null,lb:'амортизация оборудования',v:0})}
  if(kind==='k'){D.mk=D.mk||[];D.mk.push({r:row,lb:'расходники',pct:0.1,k:'all',f:null,t:null})}
  editOther(kind,row)}
 function editOther(kind,row){push(otherView.bind(null,kind,row))}
@@ -1130,17 +1205,19 @@ function matView(id){
   <div><div class="l">Лежит на сумму</div><div class="v num">${fmt(val,0)} <span class="sm mut">₽</span></div></div>
  </div>
  <button class="btn full" style="margin-bottom:12px" onclick="openBuy(${jq(id)})">Внести закупку</button>
- ${L.length?`<div class="card tight sm" style="margin-bottom:12px">
-  <div class="row"><span class="sp">Цена партии «в работе»</span><b class="num">${fmt(pr,pr<1?3:2)} ₽/${esc(base)}</b>${costBase()==='lot'?'<span class="tag ok" style="margin-left:8px">в расчёте</span>':''}</div>
+ ${L.length?(()=>{const av=avgPrice(m), расх=Math.abs(av-pr)>0.005, AVG=costBase()==='avg';
+  return `<div class="card tight sm" style="margin-bottom:12px">
+  <div class="row"><span class="sp">Цена партии «в работе»</span><b class="num">${fmt(pr,pr<1?3:2)} ₽/${esc(base)}</b>${AVG?'':'<span class="tag ok" style="margin-left:8px">в расчёте</span>'}</div>
   <div class="row" style="margin-top:6px"><span class="sp">Средневзвешенная за ${esc(ymLabel(curYM()).toLowerCase())}</span>
-   <b class="num">${fmt(avgPrice(m),avgPrice(m)<1?3:2)} ₽/${esc(base)}</b>${costBase()==='avg'?'<span class="tag ok" style="margin-left:8px">в расчёте</span>':''}</div>
+   <b class="num">${fmt(av,av<1?3:2)} ₽/${esc(base)}</b>${AVG?'<span class="tag ok" style="margin-left:8px">в расчёте</span>':''}</div>
+  ${расх?`<div class="xs mut" style="margin-top:8px">Цифры разные, потому что закупки были по разной цене: «в работе» — цена той закупки, которая расходуется сейчас, а средневзвешенная — средняя по всем закупкам месяца. Списания на неё не влияют.</div>`:''}
   <div class="xs mut" style="margin-top:8px"><a href="#" onclick="openAvg();return false">Ведомость по месяцам</a></div>
- </div>`:''}
+ </div>`})():''}
  <div class="card">
   <div class="row" style="margin-bottom:6px"><h3 class="sm">Партии</h3><span class="sp"></span>
    <span class="xs mut">${!L.length&&pr>0?'в расчёте: '+fmt(pr,pr<1?3:2)+' ₽/'+esc(base):''}</span></div>
   ${lotsHtml}
-  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе». В составе изделия можно выбрать конкретную партию.</p>`:''}
+  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе».${costBase()==='avg'?' Себестоимость сейчас считается по средневзвешенной, поэтому на цену изделия выбор партии не влияет.':' В составе изделия можно выбрать конкретную партию.'}</p>`:''}
  </div>
  ${!L.length?`<div class="card">
    <h3 class="sm" style="margin-bottom:8px">Цена без партий</h3>
