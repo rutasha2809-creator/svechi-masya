@@ -380,7 +380,7 @@ function calc(r,mode){
     let up = m
       ? ((mode==='avg'&&typeof avgPrice==='function')
           ? avgPrice(m)
-          : ((typeof matPrice==='function')?matPrice(m,l.lot):(+m.p||0)))
+          : ((typeof matPrice==='function')?matPrice(m):(+m.p||0)))
       : (l.fp!=null?+l.fp:0);
     if(l.lb==='вода') up=0;
     const q=l.q||{type:'const',value:0};
@@ -791,9 +791,11 @@ function valueOf(m){const L=lotsOf(m);return L.length?L.reduce((a,x)=>a+(+x.q||0
 function sortedLots(m){return lotsOf(m).slice().sort((a,b)=>(a.d||0)-(b.d||0))}
 function activeLot(m){const L=sortedLots(m);return L.find(x=>(+x.q||0)>0)||L[L.length-1]||null}
 function lotById(m,id){return lotsOf(m).find(x=>x.id===id)||null}
-function matPrice(m,lotId){
+/* Цена материала — всегда из партии «в работе» (самой старой непустой).
+   Выбирать партию руками нельзя: см. раздел 24 в КАК-УСТРОЕН-ПРОЕКТ.md. */
+function matPrice(m){
  const L=lotsOf(m);
- if(L.length){const l=(lotId&&lotById(m,lotId))||activeLot(m);return l?(+l.p||0):0}
+ if(L.length){const l=activeLot(m);return l?(+l.p||0):0}
  return +m.p||0;
 }
 function syncStock(m){if(lotsOf(m).length)m.s=stockOf(m);if(lotsOf(m).length){const a=activeLot(m);if(a)m.p=+a.p||0}}
@@ -995,8 +997,7 @@ function recipeView(){
  <div class="card tight sm" style="margin-bottom:12px">
   <div class="row"><span class="sp">Себестоимость по цене партии</span>
    <b class="num">${fmt(cost,2)} ₽</b></div>
-  <div class="xs mut" style="margin-top:8px">Наверху та же цифра, округлённая до рубля. Цена материала берётся из партии,
-   выбранной в строке состава, или из той, что «в работе».
+  <div class="xs mut" style="margin-top:8px">Наверху та же цифра, округлённая до рубля. Цена материала берётся из той закупки, что сейчас «в работе».
    <a href="#" onclick="openAvg();return false">Ведомость по месяцам</a> — отчёт для бухгалтера, на цену не влияет.</div>
  </div>
  ${cm.n===0&&cm.lack.length?`<div class="card tight sm warnbox">Не хватает: ${esc(cm.lack.slice(0,4).join(', '))}${cm.lack.length>4?' и ещё '+(cm.lack.length-4):''}</div>`:''}
@@ -1083,18 +1084,7 @@ function addLine(k){
  },{groups:noPack, hint:'Отметьте все материалы сразу — количество укажете потом',
     btn:'Добавить в изделие'});
 }
-let lotOpen=null;
-function editLine(row){lotOpen=null;push(lineView.bind(null,row))}
-function toggleLot(row){lotOpen=(lotOpen===row?null:row);paint()}
-/* Выбор партии сохраняем сразу. Раньше он менял только черновик изделия,
-   и если мастер уходил, не нажав «Сохранить», выбор пропадал. */
-function pickLot(row,v){
- const L=D.l.find(x=>x.r===row); if(!L)return;
- L.lot=v||null; lotOpen=null;
- const i=S.recipes.findIndex(x=>x.id===Did);
- if(i>=0){S.recipes[i]=JSON.parse(JSON.stringify(D));save();toast(v?'Партия выбрана':'Берём ту, что в работе')}
- paint();
-}
+function editLine(row){push(lineView.bind(null,row))}
 function addOther(kind){
  /* Амортизируемые предметы выбираются так же, как материалы — галочками:
     в одном изделии их обычно несколько (воскоплав, весы, термометр, фен). */
@@ -1171,29 +1161,26 @@ function lineView(row){
   <div class="grid2"><button class="btn" onclick="back()">Готово</button>
   <button class="btn d" onclick="delLine(${row})">Удалить строку</button></div>
  </div></div>`}
-// цена материала в строке состава: одна плашка, выбор партии — только по ссылке
+/* цена материала в строке состава: одна плашка, без выбора партии —
+   партии расходуются по очереди, от самой старой */
 function priceBox(l,m,row){
  const base=baseOf(m), LOTS=sortedLots(m), n=LOTS.length;
  const AVG=costBase()==='avg';
- const price=AVG?avgPrice(m):matPrice(m,l.lot);
- const chosen=l.lot?lotById(m,l.lot):null, act=activeLot(m), shown=chosen||act;
+ const price=AVG?avgPrice(m):matPrice(m);
+ const act=activeLot(m);
  let sub='';
  if(AVG){
   sub=`Средневзвешенная за ${esc(ymLabel(curYM()).toLowerCase())} — считается по всем закупкам месяца.
-   Партия на цену не влияет. <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Ещё»</a>`;
+   <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Ещё»</a>`;
  } else if(n===1){
   sub=`Закупка ${esc(lotLabel(m,LOTS[0]))}${LOTS[0].d?' от '+lotDate(LOTS[0]):''}. Партия одна.`;
  } else {
-  sub=`${chosen?'Выбрана закупка':'Закупка в работе'}: ${shown?esc(lotLabel(m,shown))+(shown.d?' от '+lotDate(shown):''):'—'}
-   · <a href="#" onclick="toggleLot(${row});return false">${lotOpen===row?'свернуть':'взять из другой закупки'}</a>`;
+  sub=`Закупка в работе: ${act?esc(lotLabel(m,act))+(act.d?' от '+lotDate(act):''):'—'}.
+   Закупки расходуются по очереди, от самой старой.`;
  }
  return `<div class="card tight sm" style="background:var(--soft);margin-bottom:12px">
   В расчёте: <b>${fmt(price,price<1?3:2)} ₽ за 1 ${esc(base)}</b>
   <div class="xs mut" style="margin-top:4px">${sub}</div>
-  ${(!AVG&&n>1&&lotOpen===row)?`<select style="margin-top:10px" onchange="pickLot(${row},this.value)">
-    <option value="" ${!l.lot?'selected':''}>та, что в работе (по очереди)</option>
-    ${LOTS.map(z=>`<option value="${esc(z.id)}" ${l.lot===z.id?'selected':''}>${esc(lotLabel(m,z))}${z.d?' · '+lotDate(z):''}${(+z.q||0)<=0?' — израсходована':''}</option>`).join('')}
-   </select>`:''}
  </div>`;
 }
 function setRule(row,v){const L=D.l.find(x=>x.r===row);
@@ -1318,7 +1305,7 @@ function matView(id){
   <div class="row" style="margin-bottom:6px"><h3 class="sm">Партии</h3><span class="sp"></span>
    <span class="xs mut">${!L.length&&pr>0?'в расчёте: '+fmt(pr,pr<1?3:2)+' ₽/'+esc(base):''}</span></div>
   ${lotsHtml}
-  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе». В составе изделия можно выбрать конкретную партию.</p>`:''}
+  ${L.length>1?`<p class="xs mut" style="margin:10px 0 0">Расходуется по очереди — сначала та, что «в работе», потом следующая по дате.</p>`:''}
  </div>
  ${!L.length?`<div class="card">
    <h3 class="sm" style="margin-bottom:8px">Цена без партий</h3>
@@ -1557,21 +1544,17 @@ function doBuy(upd){
 
 /* Что уйдёт со склада: изделия по составу × количество + упаковка заказа. */
 function shipUsage(строки){
- const need={}, партии={};
+ const need={};
  for(const x of строки){
   if(x.rid){
    const r=REC(x.rid); if(!r)continue;
    const u=usage(r), n=+x.q||0;
-   for(const id in u){
-    need[id]=(need[id]||0)+u[id]*n;
-    const line=(r.l||[]).find(y=>y.m===id&&y.lot);
-    if(line&&!партии[id])партии[id]=line.lot;
-   }
+   for(const id in u) need[id]=(need[id]||0)+u[id]*n;
   } else if(x.mid){
    need[x.mid]=(need[x.mid]||0)+(+x.q||0);
   }
  }
- return {need,партии};
+ return {need};
 }
 /* Хватит ли материалов и чего именно не хватает */
 function shipCheck(строки){
@@ -1585,7 +1568,7 @@ function shipCheck(строки){
 }
 /* Само списание. Одна запись в журнале на всю операцию. */
 function shipDo(строки,подпись,extra){
- const {need,партии}=shipUsage(строки);
+ const {need}=shipUsage(строки);
  let cost=0, штук=0;
  const acc={opr:0,ohr:0};
  for(const x of строки){
@@ -1607,7 +1590,7 @@ function shipDo(строки,подпись,extra){
  for(const id in need){
   const m=MAT(id); if(!m||!need[id])continue;
   use.push({id,n:m.n,q:need[id]});
-  consume(m,need[id],партии[id]||null);
+  consume(m,need[id]);
  }
  const запись=Object.assign({g:logKey(),t:'make',d:Date.now(),n:подпись,q:штук,
    cost:rnd(cost,2),base:costBase(),use,acc:{opr:rnd(acc.opr,2),ohr:rnd(acc.ohr,2)}},extra||{});
@@ -1747,11 +1730,9 @@ function logUndo(g){
  const заголовок=e.t==='make'?`Удалить выпуск «${e.n}» × ${e.q}?`:`Удалить закупку «${e.n}»?`;
  if(!confirm(заголовок+'\n'+когда+'\n\n'+info.what+'\n\nОтменить это будет нельзя — запись придётся завести заново.'))return;
  if(e.t==='make'){
-  const r=REC(e.id);
   for(const u of (e.use||[])){
    const m=MAT(u.id); if(!m)continue;
-   const line=r?(r.l||[]).find(x=>x.m===u.id&&x.lot):null;
-   restoreStock(m,+u.q||0,line?line.lot:null);
+   restoreStock(m,+u.q||0);
   }
  } else if(e.t==='buy'){
   const m=MAT(e.id);
