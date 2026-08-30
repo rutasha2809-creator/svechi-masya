@@ -1,0 +1,138 @@
+/* ============================================================
+   undo-test.js — отмена записи в журнале
+
+   Ошиблись при вводе — запись можно удалить и завести заново.
+   Удаление откатывает то, что запись сделала со складом:
+     выпуск  → материалы возвращаются, в ту партию, откуда брали;
+     закупка → её партия удаляется, остаток уменьшается.
+
+   Закупку, из которой уже списывали, удалить нельзя — иначе остатки
+   разойдутся. Приложение объясняет почему и не даёт.
+
+   Запуск:  node tests/undo-test.js
+   ============================================================ */
+const T = require('./harness.js');
+
+const app = T.loadApp();
+const S = T.withEmpty(app);
+
+const воск = { id: 'm::w', g: 'wax', n: 'Воск', u: 'г', bu: 'кг', p: 0, s: 0, min: 0, x: {}, lots: [] };
+const фитиль = { id: 'm::f', g: 'wick', n: 'Фитиль', u: 'см', bu: 'м', p: 0, s: 0, min: 0, x: {}, lots: [] };
+S.materials.push(воск, фитиль);
+
+const свеча = {
+  id: 'r1', n: 'Свеча', c: 'тест', p: {}, en: [], tl: [], mk: [], ex: 0,
+  l: [
+    { r: 1, lb: 'воск', g: 'wax', m: воск.id, q: { type: 'const', value: 100 }, cf: 'mul' },
+    { r: 2, lb: 'фитиль', g: 'wick', m: фитиль.id, q: { type: 'const', value: 10 }, cf: 'mul' },
+  ],
+};
+S.recipes.push(свеча);
+
+T.head('Закупили и выпустили');
+app.buyRows = [{ id: воск.id, q: '2', s: '2000', u: 'кг' }, { id: фитиль.id, q: '10', s: '300', u: 'м' }];
+app.doBuy();
+T.near(app.stockOf(воск), 2000, 0.0001, 'воска на складе, г');
+T.near(app.stockOf(фитиль), 1000, 0.0001, 'фитиля на складе, см');
+app.document.getElementById('mk-rec').value = 'r1';
+app.document.getElementById('mk-qty').value = '3';
+app.doMake();
+T.near(app.stockOf(воск), 1700, 0.0001, 'после выпуска воска, г');
+T.near(app.stockOf(фитиль), 970, 0.0001, 'после выпуска фитиля, см');
+T.check(S.log.length === 3, 'в журнале три записи: две закупки и выпуск');
+
+T.head('У записи есть ключ, по нему её и находим');
+const выпуск = S.log.find(e => e.t === 'make');
+const ключ = app.logIdOf(выпуск);
+T.check(!!ключ, 'ключ проставлен');
+T.check(app.logIdOf(выпуск) === ключ, 'повторный вызов даёт тот же ключ');
+T.check(app.LOG(ключ) === выпуск, 'запись находится по ключу');
+
+T.head('Что будет при отмене выпуска — объясняется заранее');
+const инфо = app.logUndoInfo(выпуск);
+T.check(инфо.ok === true, 'выпуск отменить можно');
+T.check(инфо.what.includes('Воск') && инфо.what.includes('300'), 'сказано, что вернётся 300 г воска');
+T.check(инфо.what.includes('Фитиль') && инфо.what.includes('30'), 'и 30 см фитиля');
+
+T.head('Отмена выпуска возвращает материалы');
+app.logUndo(ключ);
+T.near(app.stockOf(воск), 2000, 0.0001, 'воск вернулся, г');
+T.near(app.stockOf(фитиль), 1000, 0.0001, 'фитиль вернулся, см');
+T.check(!S.log.some(e => e.t === 'make'), 'запись о выпуске убрана');
+T.check(S.log.length === 2, 'закупки не тронуты');
+
+T.head('Возврат идёт в ту партию, из которой брали');
+app.buyRows = [{ id: воск.id, q: '1', s: '1500', u: 'кг' }];
+app.doBuy();
+const партии = app.sortedLots(воск);
+партии[1].d = партии[0].d + 86400000;
+свеча.l[0].lot = партии[1].id;          // в рецепте выбрана вторая партия
+app.document.getElementById('mk-qty').value = '2';
+app.doMake();
+T.near(партии[0].q, 2000, 0.0001, 'первая партия не тронута');
+T.near(партии[1].q, 1000 - 200, 0.0001, 'списано из второй');
+app.logUndo(app.logIdOf(S.log.find(e => e.t === 'make')));
+T.near(партии[1].q, 1000, 0.0001, 'вернулось во вторую партию, а не в первую');
+T.near(партии[0].q, 2000, 0.0001, 'первая по-прежнему целая');
+delete свеча.l[0].lot;
+
+T.head('Нетронутую закупку удалить можно');
+const закупкаФитиля = S.log.find(e => e.t === 'buy' && e.id === фитиль.id);
+const и2 = app.logUndoInfo(закупкаФитиля);
+T.check(и2.ok === true, 'удалить можно');
+// в числах стоит неразрывный пробел — сравниваем, убрав все пробелы
+const безПробелов = т => String(т).replace(/[\s\u00a0\u202f]/g, '');
+T.check(безПробелов(и2.what).includes('1000'), 'сказано, на сколько уменьшится остаток');
+app.logUndo(app.logIdOf(закупкаФитиля));
+T.near(app.stockOf(фитиль), 0, 0.0001, 'остаток фитиля обнулился');
+T.check(app.sortedLots(фитиль).length === 0, 'партия удалена');
+
+T.head('Закупку, из которой уже списывали, удалить нельзя');
+app.document.getElementById('mk-qty').value = '1';
+app.buyRows = [{ id: фитиль.id, q: '5', s: '150', u: 'м' }];
+app.doBuy();
+app.doMake();                                  // спишет из свежей партии фитиля и первой воска
+const закупкаВоска = S.log.filter(e => e.t === 'buy' && e.id === воск.id).pop();
+const и3 = app.logUndoInfo(закупкаВоска);
+T.check(и3.ok === false, 'удалить нельзя');
+T.check(и3.why.includes('уже списано'), 'объяснено почему');
+T.check(и3.why.includes('отмените выпуски'), 'подсказано, что делать');
+const было = app.stockOf(воск);
+app.logUndo(app.logIdOf(закупкаВоска));
+T.near(app.stockOf(воск), было, 0.0001, 'остаток не изменился — удаление не прошло');
+T.check(!!app.LOG(app.logIdOf(закупкаВоска)), 'запись осталась в журнале');
+
+T.head('Сначала отменяем выпуск — потом закупка удаляется');
+app.logUndo(app.logIdOf(S.log.find(e => e.t === 'make')));
+T.check(app.logUndoInfo(закупкаВоска).ok === true, 'теперь закупку удалить можно');
+
+T.head('Удаление последней партии обнуляет остаток');
+/* Раньше здесь пряталась ошибка: при пустом списке партий остаток
+   возвращался к старому значению m.s и «воскресал». */
+for (const e of S.log.filter(x => x.t === 'buy' && x.id === воск.id)) app.logUndo(app.logIdOf(e));
+T.check(app.sortedLots(воск).length === 0, 'партий воска не осталось');
+T.near(app.stockOf(воск), 0, 0.0001, 'остаток обнулился, а не вернулся к старому');
+
+T.head('Старая запись без расхода — предупреждение, но удалить можно');
+S.log.push({ t: 'make', d: Date.now(), id: 'r1', n: 'Свеча', q: 1, cost: 100 });
+const старая = S.log[S.log.length - 1];
+const и4 = app.logUndoInfo(старая);
+T.check(и4.ok === true, 'удалить можно');
+T.check(и4.what.includes('ничего не изменит'), 'сказано, что на складе ничего не изменится');
+app.logUndo(app.logIdOf(старая));
+T.check(!S.log.includes(старая), 'запись убрана');
+
+T.head('Экран журнала строится и показывает ссылки');
+app.buyRows = [{ id: воск.id, q: '1', s: '1000', u: 'кг' }];
+app.doBuy();
+app.document.getElementById('mk-qty').value = '1';
+app.doMake();
+try {
+  app.renderMake();
+  const html = app.document.getElementById('list-log').innerHTML;
+  T.check(html.includes('отменить выпуск'), 'у выпуска есть ссылка «отменить выпуск»');
+  T.check(html.includes('почему нельзя удалить') || html.includes('удалить закупку'),
+    'у закупки есть ссылка — либо удалить, либо объяснение');
+} catch (e) { T.bad('журнал упал: ' + e.message); }
+
+T.done('отмена записи в журнале');

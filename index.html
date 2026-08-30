@@ -202,6 +202,7 @@ a{cursor:pointer}
     <button class="btn full" style="margin-top:12px" onclick="doMake()">Списать материалы со склада</button>
   </div>
   <h3 class="sm mut" style="margin:16px 0 8px">История: закупки и выпуски</h3>
+  <p class="xs mut" style="margin:-4px 0 8px">Ошиблись при вводе — отмените запись и заведите заново. Выпуск вернёт материалы на склад, закупка уберёт свою партию.</p>
   <div class="list" id="list-log"></div>
 </section>
 
@@ -1298,7 +1299,9 @@ function lotSave(mid,lid){
  syncStock(m); save(); back(); toast('Партия обновлена')}
 function lotDel(mid,lid){
  if(!confirm('Удалить партию? Остаток уменьшится на её количество.'))return;
- const m=MAT(mid); m.lots=lotsOf(m).filter(x=>x.id!==lid); syncStock(m); save(); back(); toast('Партия удалена')}
+ const m=MAT(mid); m.lots=lotsOf(m).filter(x=>x.id!==lid);
+ if(!m.lots.length)m.s=0; else syncStock(m);
+ save(); back(); toast('Партия удалена')}
 
 function mmUnit(){
  const base=document.getElementById('m-u').value;
@@ -1464,9 +1467,9 @@ function doBuy(upd){
   const base=baseOf(m), bu0=b.u||(m.bu||base), add=q*conv(bu0,base);
   // если раньше остаток был без партий — переносим его в стартовую партию
   if(!lotsOf(m).length&&(+m.s||0)>0){m.lots=[newLot(+m.s||0,+m.p||0,{q0:+m.s||0,sum:(+m.s||0)*(+m.p||0),bq:+m.s||0,bu:base,d:Date.now()-1})]}
-  m.lots=lotsOf(m); m.lots.push(newLot(add,s>0?s/add:0,{q0:add,sum:s,bq:q,bu:bu0}));
+  m.lots=lotsOf(m); const лот=newLot(add,s>0?s/add:0,{q0:add,sum:s,bq:q,bu:bu0}); m.lots.push(лот);
   m.bu=bu0; m.pq=q; m.pp=s; syncStock(m);
-  S.log.unshift({t:'buy',d:Date.now(),id:m.id,n:m.n,q:add,u:base,sum:s,bq:q,bu:bu0}); n++}
+  S.log.unshift({g:logKey(),t:'buy',d:Date.now(),id:m.id,n:m.n,q:add,u:base,sum:s,bq:q,bu:bu0,lot:лот.id}); n++}
  if(!n)return toast('Заполните хотя бы одну позицию');
  save();toast('Записано позиций: '+n);back()}
 
@@ -1484,14 +1487,19 @@ function renderMake(){
  if(keep)s.value=keep; s.onchange=mkCheck; document.getElementById('mk-qty').oninput=mkCheck;
  mkCheck();
  const logs=S.log.slice(0,50);
- document.getElementById('list-log').innerHTML=logs.length?logs.map(l=>l.t==='make'
+ document.getElementById('list-log').innerHTML=logs.length?logs.map(l=>{
+  const g=logIdOf(l), info=logUndoInfo(l);
+  const кнопка=`<div class="row" style="margin-top:6px"><span class="sp"></span>
+    <a class="xs" style="color:${info.ok?'var(--bad)':'var(--mut)'}" onclick="logUndo(${jq(g)})"
+     >${info.ok?(l.t==='make'?'отменить выпуск':'удалить закупку'):'почему нельзя удалить'}</a></div>`;
+  return l.t==='make'
   ?`<div class="item" style="cursor:default"><div class="row"><div style="flex:1;min-width:0">
     <div class="t">Выпуск: ${esc(l.n)} × ${l.q}</div><div class="xs mut">${new Date(l.d).toLocaleString('ru-RU')}</div></div>
-    <div class="b num">−${fmt(l.cost,0)} ₽</div></div></div>`
+    <div class="b num">−${fmt(l.cost,0)} ₽</div></div>${кнопка}</div>`
   :`<div class="item" style="cursor:default"><div class="row"><div style="flex:1;min-width:0">
     <div class="t">Закупка: ${esc(l.n)}</div><div class="xs mut">${new Date(l.d).toLocaleString('ru-RU')}</div></div>
     <div style="text-align:right"><div class="b num" style="color:var(--ok)">+${qfmt(l.q)} ${esc(l.u)}</div>
-    <div class="xs mut num">${l.sum?fmt(l.sum,0)+' ₽':''}</div></div></div></div>`).join('')
+    <div class="xs mut num">${l.sum?fmt(l.sum,0)+' ₽':''}</div></div></div>${кнопка}</div>`}).join('')
   :'<div class="empty">Пока пусто</div>';
 }
 function mkCheck(){
@@ -1526,7 +1534,7 @@ function doMake(){
   const need=u[id]*n;
   use.push({id:id,n:m.n,q:need});
   consume(m,need,line?line.lot:null)}
- S.log.unshift({t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n,base:costBase(),use:use,acc:acc});
+ S.log.unshift({g:logKey(),t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n,base:costBase(),use:use,acc:acc});
  save();toast('Списано на '+n+' шт');renderMake()}
 
 /* ============ ВЕДОМОСТЬ ПО СРЕДНЕВЗВЕШЕННОЙ ============ */
@@ -1587,6 +1595,70 @@ function avgView(){
   <br><br><b>На цены изделий эта ведомость не влияет.</b> Себестоимость считается по цене конкретной закупки — той, что выбрана в строке состава,
   или той, что «в работе». Ведомость нужна бухгалтеру для учёта и сверки, это отдельный отчёт.
  </div></div>`;
+}
+
+/* ============ ОТМЕНА ЗАПИСИ В ЖУРНАЛЕ ============
+   Ошиблись при вводе — запись можно удалить и завести заново. Удаление
+   не просто вычёркивает строку, а откатывает то, что она сделала со складом:
+   выпуск возвращает материалы, закупка убирает свою партию.            */
+function logKey(){return 'g'+Date.now()+Math.floor(Math.random()*1e4)}
+/* у старых записей ключа нет — проставляем при первом обращении */
+function logIdOf(e){if(!e.g)e.g=logKey();return e.g}
+function LOG(g){return (S.log||[]).find(e=>e.g===g)}
+
+/* вернуть материал на склад: в ту партию, откуда брали, иначе в ту, что «в работе» */
+function restoreStock(m,amount,preferId){
+ if(!m||!(amount>0))return;
+ const L=lotsOf(m);
+ if(!L.length){m.s=(+m.s||0)+amount;return}
+ let l=preferId?lotById(m,preferId):null;
+ if(!l)l=activeLot(m)||sortedLots(m)[0];
+ if(l)l.q=(+l.q||0)+amount; else m.s=(+m.s||0)+amount;
+ syncStock(m);
+}
+/* можно ли удалить запись и что при этом произойдёт */
+function logUndoInfo(e){
+ if(!e)return {ok:false,why:'Запись не найдена'};
+ if(e.t==='make'){
+  const назад=(e.use||[]).filter(u=>MAT(u.id));
+  return {ok:true,kind:'make',
+   what:назад.length?'Материалы вернутся на склад: '+назад.map(u=>{const m=MAT(u.id);
+     return m.n+' '+qfmt(u.q)+' '+baseOf(m)}).slice(0,6).join(', ')+(назад.length>6?' и ещё '+(назад.length-6):'')
+    :'Эта запись сделана до того, как приложение стало запоминать расход, — на складе она ничего не изменит.'};
+ }
+ if(e.t==='buy'){
+  const m=MAT(e.id);
+  if(!m)return {ok:false,why:'Материал из этой закупки удалён — откатывать нечего. Строку можно только оставить как есть.'};
+  const l=e.lot?lotById(m,e.lot):null;
+  if(!l)return {ok:false,why:'Партия этой закупки не найдена — возможно, её уже удалили или правили вручную. Поправьте остаток в карточке материала «'+m.n+'».'};
+  const израсходовано=rnd((+l.q0||0)-(+l.q||0),4);
+  if(израсходовано>0.0001)return {ok:false,why:'Из этой партии уже списано '+qfmt(израсходовано)+' '+baseOf(m)+'. Удалить её нельзя — сначала отмените выпуски, в которых она расходовалась, иначе остатки разойдутся.'};
+  return {ok:true,kind:'buy',what:'Партия удалится, остаток «'+m.n+'» уменьшится на '+qfmt(+l.q||0)+' '+baseOf(m)+'.'};
+ }
+ return {ok:false,why:'Такую запись удалять нельзя'};
+}
+function logUndo(g){
+ const e=LOG(g); const info=logUndoInfo(e);
+ if(!info.ok)return alert(info.why);
+ const когда=e.d?new Date(e.d).toLocaleString('ru-RU'):'';
+ const заголовок=e.t==='make'?`Удалить выпуск «${e.n}» × ${e.q}?`:`Удалить закупку «${e.n}»?`;
+ if(!confirm(заголовок+'\n'+когда+'\n\n'+info.what+'\n\nОтменить это будет нельзя — запись придётся завести заново.'))return;
+ if(e.t==='make'){
+  const r=REC(e.id);
+  for(const u of (e.use||[])){
+   const m=MAT(u.id); if(!m)continue;
+   const line=r?(r.l||[]).find(x=>x.m===u.id&&x.lot):null;
+   restoreStock(m,+u.q||0,line?line.lot:null);
+  }
+ } else if(e.t==='buy'){
+  const m=MAT(e.id);
+  m.lots=lotsOf(m).filter(x=>x.id!==e.lot);
+  /* Если убрали последнюю партию — остаток обнуляем руками: stockOf() при
+     пустом списке партий возвращается к старому m.s, и он бы «воскрес». */
+  if(!m.lots.length)m.s=0; else syncStock(m);
+ }
+ S.log=(S.log||[]).filter(x=>x!==e);
+ save();render();paint();toast(e.t==='make'?'Выпуск отменён':'Закупка удалена');
 }
 
 /* ============ ОБЩЕПРОИЗВОДСТВЕННЫЕ И ОБЩЕХОЗЯЙСТВЕННЫЕ ============
