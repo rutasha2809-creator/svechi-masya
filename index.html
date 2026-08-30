@@ -73,6 +73,7 @@ display:inline-flex;align-items:center;gap:7px;justify-content:center;transition
 .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;transition:.12s}
 .item:active{background:var(--soft)}
 .item.on{border-color:var(--acc);background:var(--soft)}
+table .tot td{border-top:2px solid var(--line);padding-top:9px;background:var(--soft)}
 .ck{flex:none;width:22px;height:22px;margin-right:10px;border:2px solid var(--line);border-radius:6px;
  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;line-height:1}
 .ck.on{background:var(--acc);border-color:var(--acc)}
@@ -1055,6 +1056,13 @@ function otherView(kind,row){
   <label class="f"><span>Название</span><input value="${esc(k.lb||'')}" onchange="k_set(${row},'lb',this.value)"></label>
   <label class="f"><span>Процент</span><input type="number" step="any" value="${(k.pct||0)*100}" onchange="k_set(${row},'pct',this.value)"></label>
   <p class="xs mut">${isAll?'Считается от всего, что выше: материалы, упаковка, энергия, амортизация.':'Считается по диапазону строк из исходного файла Excel.'}</p>
+  <label class="f"><span>В ведомости списывается со статьи</span>
+   <select onchange="setMkAcc(${row},this.value)">
+    <option value="none" ${mkAccOf(D,row)===null?'selected':''}>никуда — просто наценка</option>
+    <option value="opr" ${mkAccOf(D,row)==='opr'?'selected':''}>общепроизводственные расходы</option>
+    <option value="ohr" ${mkAccOf(D,row)==='ohr'?'selected':''}>общехозяйственные расходы</option>
+   </select></label>
+  <p class="xs mut" style="margin:-4px 0 12px">${k.acc?'Выбрано вручную.':'Определено по названию строки — при желании поставьте своё.'} Начисленное по этой строке уходит из накопительной позиции в ведомости.</p>
   <div class="grid2" style="margin-top:12px"><button class="btn" onclick="back()">Готово</button>
   <button class="btn d" onclick="D.mk=D.mk.filter(x=>x.r!==${row});back()">Удалить</button></div>
  </div></div>`}
@@ -1505,13 +1513,20 @@ function doMake(){
  const r=REC(document.getElementById('mk-rec').value);
  const n=Math.max(1,parseInt(document.getElementById('mk-qty').value)||1);
  if(!confirm(`Списать материалы на ${n} шт «${r.n}»?`))return;
- const u=usage(r),{cost}=calc(r),use=[];
+ const u=usage(r),{cost,det}=calc(r),use=[];
+ /* Сколько этим выпуском начислено на общепроизводственные и общехозяйственные —
+    считаем один раз и кладём в журнал: потом ведомость берёт цифры отсюда,
+    а не пересчитывает старые выпуски по нынешним процентам. */
+ const acc={opr:0,ohr:0};
+ for(const x of det){ if(x.k!=='k')continue;
+  const k=mkAccOf(r,x.row); if(k)acc[k]+=(+x.c||0)*n }
+ acc.opr=rnd(acc.opr,2); acc.ohr=rnd(acc.ohr,2);
  for(const id in u){const m=MAT(id);if(!m)continue;
   const line=r.l.find(x=>x.m===id&&x.lot);
   const need=u[id]*n;
   use.push({id:id,n:m.n,q:need});
   consume(m,need,line?line.lot:null)}
- S.log.unshift({t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n,base:costBase(),use:use});
+ S.log.unshift({t:'make',d:Date.now(),id:r.id,n:r.n,q:n,cost:cost*n,base:costBase(),use:use,acc:acc});
  save();toast('Списано на '+n+' шт');renderMake()}
 
 /* ============ ВЕДОМОСТЬ ПО СРЕДНЕВЗВЕШЕННОЙ ============ */
@@ -1554,16 +1569,110 @@ function avgView(){
    <td class="num"><b>${x.avg?fmt(x.avg,x.avg<1?3:2):'—'}</b></td>
    <td class="num" ${x.wq?'style="color:var(--warn)"':''}>${x.wq?qfmt(x.wq):'—'}</td><td class="num">${x.wSum?fmt(x.wSum,2):'—'}</td>
    <td class="num">${x.cq?qfmt(x.cq):'—'}</td><td class="num">${x.cs?fmt(x.cs,2):'—'}</td></tr>`).join('')}
+   <tr class="tot"><td><b>ИТОГО по материалам</b><div class="xs mut">позиций: ${rows.length}</div></td>
+    <td></td><td class="num"><b>${fmt(tot.os,2)}</b></td>
+    <td></td><td class="num"><b>${fmt(tot.is,2)}</b></td>
+    <td></td>
+    <td></td><td class="num"><b>${fmt(tot.ws,2)}</b></td>
+    <td></td><td class="num"><b>${fmt(tot.cs,2)}</b></td></tr>
   </tbody></table></div>`
  :`<div class="card"><h3 style="margin-bottom:8px">За этот месяц движений нет</h3>
    <p class="sm mut" style="margin:0">Ведомость наполняется закупками и выпусками. Внесите закупку на складе или спишите материалы во вкладке «Выпуск».</p></div>`}
+ ${accHtml(avgYM)}
  ${taxMonthHtml(avgYM)}
+ ${itogoHtml(avgYM,tot)}
  <div class="card tight sm" style="margin-top:12px">
   <b>Как считается.</b> Средняя за месяц = (сумма остатка на начало + сумма всех закупок месяца) ÷ (количество на начало + закупленное количество).
   По этой цене в ведомости списывается всё, что ушло в производство в этом месяце. Остаток на конец переходит на начало следующего месяца.
   <br><br><b>На цены изделий эта ведомость не влияет.</b> Себестоимость считается по цене конкретной закупки — той, что выбрана в строке состава,
   или той, что «в работе». Ведомость нужна бухгалтеру для учёта и сверки, это отдельный отчёт.
  </div></div>`;
+}
+
+/* ============ ОБЩЕПРОИЗВОДСТВЕННЫЕ И ОБЩЕХОЗЯЙСТВЕННЫЕ ============
+   Две накопительные позиции. Пополняются закупками из разделов справочника,
+   отмеченных соответственно; списываются процентами, начисленными на изделия
+   при выпуске. Разница копится: остаток на конец месяца переходит на начало
+   следующего, как у материалов.                                          */
+const ACC={opr:{n:'Общепроизводственные',d:'перчатки, салфетки, скатерти, маски, стаканчики'},
+           ohr:{n:'Общехозяйственные',   d:'промо, обучение, маркетинг'}};
+
+/* какому счёту принадлежит раздел справочника */
+function accGroups(){S.accGroups=S.accGroups||{};return S.accGroups}
+function groupAcc(g){const v=accGroups()[g];return (v==='opr'||v==='ohr')?v:null}
+function setGroupAcc(g,v){
+ const A=accGroups();
+ if(v==='opr'||v==='ohr')A[g]=v; else delete A[g];
+ save();paint();toast(v?'Раздел отмечен: '+ACC[v].n.toLowerCase():'Отметка снята')}
+
+/* какому счёту принадлежит строка наценки в изделии */
+function mkAccGuess(lb){
+ const t=String(lb||'').toLowerCase();
+ if(/общехоз|промо|маркетинг|реклам|обучен/.test(t))return 'ohr';
+ if(/общепроизвод|расходник|разное/.test(t))return 'opr';
+ return null;
+}
+function mkAccOf(r,row){
+ const mk=((r&&r.mk)||[]).find(x=>x.r===row); if(!mk)return null;
+ if(mk.acc==='opr'||mk.acc==='ohr')return mk.acc;
+ if(mk.acc==='none')return null;
+ return mkAccGuess(mk.lb);
+}
+function setMkAcc(row,v){
+ const mk=(D.mk||[]).find(x=>x.r===row); if(!mk)return;
+ mk.acc=v||'none'; save();paint()}
+
+/* помесячная ведомость по счёту: пополнение, списание, остаток */
+function accLedger(kind){
+ const inn={},out={};
+ (S.materials||[]).forEach(m=>{
+  if(groupAcc(m.g)!==kind)return;
+  ((m.lots)||[]).forEach(l=>{const k=ymOf(l.d);
+   inn[k]=(inn[k]||0)+(l.sum!=null?+l.sum:(+l.q0||0)*(+l.p||0))});
+ });
+ (S.log||[]).forEach(e=>{
+  if(e.t!=='make'||!e.acc)return; const v=+e.acc[kind]||0; if(!v)return;
+  const k=ymOf(e.d); out[k]=(out[k]||0)+v;
+ });
+ const keys=[...new Set(Object.keys(inn).concat(Object.keys(out)))].sort();
+ if(!keys.length)return [];
+ let ym=keys[0]; const cur=curYM();
+ let last=keys[keys.length-1]; if(cur>last)last=cur;
+ const rows=[]; let o=0,guard=0;
+ while(ym<=last&&guard++<600){
+  const i=rnd(inn[ym]||0,2), w=rnd(out[ym]||0,2), c=rnd(o+i-w,2);
+  rows.push({ym,o:rnd(o,2),in:i,out:w,c});
+  o=c; ym=ymNext(ym);
+ }
+ return rows;
+}
+function accAt(kind,ym){const L=accLedger(kind);return L.find(x=>x.ym===ym)||null}
+/* были ли выпуски без разбивки — по ним ведомость неполна */
+function accNoBreak(ym){
+ return (S.log||[]).filter(e=>e.t==='make'&&ymOf(e.d)===ym&&!e.acc).length;
+}
+function accHtml(ym){
+ const строки=Object.keys(ACC).map(k=>{
+  const x=accAt(k,ym)||{o:0,in:0,out:0,c:0};
+  return `<tr><td><div class="b">${ACC[k].n}</div><div class="xs mut">${ACC[k].d}</div></td>
+   <td class="num">${x.o?fmt(x.o,2):'—'}</td>
+   <td class="num" ${x.in?'style="color:var(--ok)"':''}>${x.in?fmt(x.in,2):'—'}</td>
+   <td class="num" ${x.out?'style="color:var(--warn)"':''}>${x.out?fmt(x.out,2):'—'}</td>
+   <td class="num"><b>${x.c?fmt(x.c,2):'—'}</b></td></tr>`}).join('');
+ const пусто=Object.keys(ACC).every(k=>{const x=accAt(k,ym);return !x||(!x.o&&!x.in&&!x.out&&!x.c)});
+ const без=accNoBreak(ym);
+ const нетРазделов=!Object.values(accGroups()).length;
+ return `<div class="card" style="margin-top:12px">
+  <h3 class="sm" style="margin-bottom:4px">Расходы общей суммой</h3>
+  <p class="xs mut" style="margin:0 0 10px">${esc(ymLabel(ym))}. Пополнение — закупки из разделов, отмеченных как общепроизводственные и общехозяйственные. Списание — то, что начислено на изделия при выпуске.</p>
+  ${пусто?'<div class="sm mut" style="padding:6px 0">За этот месяц движений по этим позициям не было.</div>':`
+  <div style="overflow-x:auto"><table class="tt"><thead><tr>
+    <th>Статья</th><th>На начало</th><th>Пополнение</th><th>Списание</th><th>На конец</th></tr></thead>
+   <tbody>${строки}</tbody></table></div>
+  <p class="xs mut" style="margin:10px 0 0">Остаток на конец переходит на начало следующего месяца. Плюс — потратили больше, чем разнесли по изделиям; минус — наоборот.</p>`}
+  ${нетРазделов?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения нет. Отметьте разделы в «Ещё → Разделы справочника».</div>`:''}
+  ${без?`<div class="card tight sm mut" style="margin-top:10px">Выпусков без разбивки по статьям: ${без}. Это записи, сделанные до появления этой ведомости — по ним видна только общая себестоимость.</div>`:''}
+ </div>`;
 }
 
 /* ============ ЗАКАЗЫ И НАЛОГ ============
@@ -1813,6 +1922,36 @@ function pickRecView(title){
  <div class="pickbar"><button class="btn full" ${sel.length?'':'disabled'} onclick="pickRecDone()">Добавить в заказ${sel.length?' ('+sel.length+')':''}</button></div>
  </div>`}
 
+/* Свод за месяц: одной таблицей всё, что посчитано выше. */
+function itogoHtml(ym,tot){
+ const opr=accAt('opr',ym)||{o:0,in:0,out:0,c:0};
+ const ohr=accAt('ohr',ym)||{o:0,in:0,out:0,c:0};
+ const t=taxMonth(ym);
+ const строка=(имя,подпись,знач,цвет)=>`<tr><td><div class="b">${имя}</div><div class="xs mut">${подпись}</div></td>
+   <td class="num" ${цвет?`style="color:${цвет}"`:''}><b>${fmt(знач,2)}</b></td></tr>`;
+ const потрачено=rnd(tot.ws+opr.out+ohr.out,2);
+ return `<div class="card" style="margin-top:12px">
+  <h3 class="sm" style="margin-bottom:4px">ИТОГО за месяц</h3>
+  <p class="xs mut" style="margin:0 0 10px">${esc(ymLabel(ym))}</p>
+  <div style="overflow-x:auto"><table class="tt"><tbody>
+   ${строка('Закуплено материалов','приход на склад за месяц',tot.is,'var(--ok)')}
+   ${строка('Списано материалов в изделия','по средневзвешенной за месяц',tot.ws,'var(--warn)')}
+   ${строка('Остаток на складе','на конец месяца, в деньгах',tot.cs)}
+   <tr><td colspan="2" style="height:6px"></td></tr>
+   ${строка('Общепроизводственные: пополнение','закупки из отмеченных разделов',opr.in,'var(--ok)')}
+   ${строка('Общепроизводственные: списание','начислено на изделия',opr.out,'var(--warn)')}
+   ${строка('Общехозяйственные: пополнение','закупки из отмеченных разделов',ohr.in,'var(--ok)')}
+   ${строка('Общехозяйственные: списание','начислено на изделия',ohr.out,'var(--warn)')}
+   <tr><td colspan="2" style="height:6px"></td></tr>
+   ${строка('Выручка по заказам','заказов: '+t.заказов,t.выручка,'var(--acc)')}
+   ${строка('Налог',t.оплата?'оплачен '+esc(new Date(t.оплата.d).toLocaleDateString('ru-RU')):'не отмечен оплаченным',t.всего,'var(--warn)')}
+   <tr class="tot"><td><b>Ушло в производство за месяц</b>
+     <div class="xs mut">материалы + общепроизводственные + общехозяйственные</div></td>
+    <td class="num"><b>${fmt(потрачено,2)}</b></td></tr>
+  </tbody></table></div>
+ </div>`;
+}
+
 /* ============ РАЗДЕЛЫ СПРАВОЧНИКА ============ */
 function openGroups(){push(groupsView)}
 function groupsView(){
@@ -1820,14 +1959,22 @@ function groupsView(){
  const off=(S.groupsOff||[]).filter(k=>!G[k]);
  return head('Разделы справочника','Ими сгруппированы материалы на складе')+`<div class="wrap" style="padding-top:12px">
  <button class="btn full" style="margin-bottom:12px" onclick="addGroup()">+ Новый раздел</button>
- <div class="list">${keys.map(g=>{const n=groupCount(g);
+ <div class="list">${keys.map(g=>{const n=groupCount(g);const a=groupAcc(g);
    return `<div class="item" style="cursor:default"><div class="row">
-    <div style="flex:1;min-width:0"><div class="t">${esc(G[g])}</div>
+    <div style="flex:1;min-width:0"><div class="t">${esc(G[g])}${a?` <span class="tag">${esc(ACC[a].n.toLowerCase())}</span>`:''}</div>
     <div class="xs mut">${n?'материалов: '+n:'пусто'}</div></div>
     <a class="xs" onclick="renameGroup(${jq(g)})">переименовать</a>
     ${n?'':`<a class="xs" style="color:var(--bad);margin-left:12px" onclick="hideGroup(${jq(g)})">убрать</a>`}
-   </div></div>`}).join('')}</div>
+   </div>
+   <label class="f" style="margin:8px 0 0"><span class="xs">Закупки из раздела относятся к</span>
+    <select onchange="setGroupAcc(${jq(g)},this.value)">
+     <option value="" ${!a?'selected':''}>материалам изделий</option>
+     <option value="opr" ${a==='opr'?'selected':''}>общепроизводственным расходам</option>
+     <option value="ohr" ${a==='ohr'?'selected':''}>общехозяйственным расходам</option>
+    </select></label>
+   </div>`}).join('')}</div>
  <p class="xs mut" style="margin-top:12px">Убрать можно только пустой раздел. На складе показываются лишь те разделы, в которых уже есть материалы — поэтому список фильтров там короче.</p>
+ <div class="card tight sm mut" style="margin-top:12px">Отмеченные разделы работают как накопительные позиции: закупки из них не идут в состав изделий, а копятся общей суммой в ведомости и списываются оттуда процентами, начисленными на изделия. Перчатки и салфетки — общепроизводственные; реклама, промо и обучение — общехозяйственные.</div>
  ${off.length?`<h3 class="sm mut" style="margin:18px 0 8px">Убранные разделы</h3>
    <div class="list">${off.map(g=>`<div class="item" style="cursor:default"><div class="row">
     <div style="flex:1"><div class="t">${esc((S.groups&&S.groups[g])||SEED.groups[g]||g)}</div></div>

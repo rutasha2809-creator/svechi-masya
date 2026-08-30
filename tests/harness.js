@@ -74,6 +74,7 @@ cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stop
   Object.defineProperty(out,'pickState',{get:function(){return pickState},set:function(v){pickState=v},configurable:true});
   Object.defineProperty(out,'pickRec',{get:function(){return pickRec},set:function(v){pickRec=v},configurable:true});
   Object.defineProperty(out,'ordId',{get:function(){return ordId},set:function(v){ordId=v},configurable:true});
+  Object.defineProperty(out,'avgYM',{get:function(){return avgYM},set:function(v){avgYM=v},configurable:true});
 })();`;
 
   // --- заглушки браузера: ровно столько, сколько нужно расчётам ---
