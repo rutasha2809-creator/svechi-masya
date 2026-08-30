@@ -326,16 +326,19 @@ function derive(r){
   for(const Sx of ['A','B']){
     const wf=(r.wr&&r.wr[Sx])||'';
     const vw=+p['volWax_'+Sx]||0, vt=+p['volTea_'+Sx]||0, cc=+p['candleCount_'+Sx]||1;
-    /* Масса воска с отдушкой = объём × 0,95. Без округления: в Excel здесь
-       стояло округление до десятков — 280 мл давали 270 г вместо 266, и это
-       приписывало изделию лишние граммы. Владелец: округления быть не должно. */
+    /* Масса воска с отдушкой = объём × 0,95, округляем до целых граммов.
+       До десятков округлять нельзя — в Excel так и было, и 280 мл давали 270 г
+       вместо 266, приписывая изделию лишние граммы. А до целых нужно: мастер
+       отвешивает граммы, дробей на весах не бывает.                        */
     let raw;
-    if(wf.includes('*0.95*')) raw = vt? vt*0.95*cc : vw*0.95*cc;
-    else if(/0\.95/.test(wf)) raw = vw*0.95;
+    if(wf.includes('*0.95*')) raw = vt? rnd(vt*0.95*cc,0) : rnd(vw*0.95*cc,0);
+    else if(/0\.95/.test(wf)) raw = rnd(vw*0.95,0);
     else raw = +p['waxRaw_'+Sx]||0;
-    /* Воск без отдушки = масса / (100 + % отдушки) × 100, тоже без округления. */
+    /* Воск без отдушки = масса / (100 + % отдушки) × 100, тоже до целых.
+       Отдушка = остаток, поэтому воск и отдушка всегда дают в сумме массу
+       ровно — без «потерянного» или «лишнего» грамма от двойного округления. */
     const pc=+p['fragrPct_'+Sx]||0;
-    const net = raw? raw/(pc+100)*100 : 0;
+    const net = raw? rnd(raw/(pc+100)*100,0) : 0;
     d['waxRaw_'+Sx]=raw; d['waxNet_'+Sx]=net; d['fragrMass_'+Sx]=raw-net;
   }
   let g=0;
@@ -894,6 +897,13 @@ function recipeView(){
   <div ${cm.n==null?`onclick="closeAll();tab('stock')" style="cursor:pointer"`:''}>
    <div class="l">Хватит материалов</div>
    <div class="v num">${cm.n==null?'<span class="sm" style="color:var(--acc)">внести остатки</span>':cm.n+' шт'}</div></div>
+ </div>
+ <div class="card tight sm" style="margin-bottom:12px">
+  <div class="row"><span class="sp">Себестоимость по цене партии</span>
+   <b class="num">${fmt(cost,2)} ₽</b></div>
+  <div class="xs mut" style="margin-top:8px">Наверху та же цифра, округлённая до рубля. Цена материала берётся из партии,
+   выбранной в строке состава, или из той, что «в работе».
+   <a href="#" onclick="openAvg();return false">Ведомость по месяцам</a> — отчёт для бухгалтера, на цену не влияет.</div>
  </div>
  ${cm.n===0&&cm.lack.length?`<div class="card tight sm warnbox">Не хватает: ${esc(cm.lack.slice(0,4).join(', '))}${cm.lack.length>4?' и ещё '+(cm.lack.length-4):''}</div>`:''}
  <div class="card">
