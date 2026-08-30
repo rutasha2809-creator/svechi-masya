@@ -111,6 +111,10 @@ padding:0 0 calc(24px + env(safe-area-inset-bottom));animation:up .22s cubic-bez
 .srch svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--mut);fill:none;stroke-width:2}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
+/* На телефоне ряд разделов листается пальцем. На компьютере горизонтальной
+   прокрутки мышью нет, и правые разделы становились недоступны — поэтому
+   на широком экране ряд переносится на несколько строк. */
+@media(min-width:620px){.chips{flex-wrap:wrap;overflow-x:visible}}
 .chip{white-space:nowrap;font-size:12.5px;padding:6px 12px;border-radius:99px;border:1px solid var(--line);
 background:var(--card);color:var(--mut);cursor:pointer}
 .chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
