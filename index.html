@@ -1779,9 +1779,12 @@ function taxPct(k){const t=TAXES[k];return t?t.pct:0}
 function taxName(k){const t=TAXES[k];return t?t.n:TAXES.none.n}
 function orders(){S.orders=S.orders||[];return S.orders}
 function orderItemsSum(o){return rnd((o.items||[]).reduce((a,x)=>a+(+x.price||0)*(+x.q||0),0),2)}
-function orderPackSum(o){return rnd((o.pack||[]).reduce((a,x)=>a+(+x.price||0)*(+x.q||0),0),2)}
-/* Упаковку клиент оплачивает — она входит в стоимость заказа и в базу налога. */
-function orderSum(o){return o&&o.own?0:rnd(orderItemsSum(o)+orderPackSum(o),2)}
+/* Упаковка в деньгах — это её закупочная стоимость, а не выручка. */
+function orderPackSum(o){return rnd((o.pack||[]).reduce((a,x)=>{const m=MAT(x.mid);return a+(m?matPrice(m):0)*(+x.q||0)},0),2)}
+/* Стоимость упаковки заложена в себестоимость изделия процентом от основных
+   затрат, поэтому к цене заказа она НЕ прибавляется — иначе задвоение.
+   Коробки, ленты и открытки в заказе нужны только для списания со склада. */
+function orderSum(o){return o&&o.own?0:orderItemsSum(o)}
 /* Себестоимость заказа: изделия по составу + упаковка по закупочной цене. */
 function orderCost(o){
  let c=0;
@@ -1933,8 +1936,7 @@ function ordAddPack(){
    const m=MAT(mid);if(!m)continue;
    const есть=o.pack.find(x=>x.mid===mid);
    if(есть){есть.q=(+есть.q||0)+1;continue}
-   /* Подставляем закупочную цену — сколько брать с клиента, владелец решает сама. */
-   o.pack.push({mid,n:m.n,u:baseOf(m),q:1,price:rnd(matPrice(m),2)});
+   o.pack.push({mid,n:m.n,u:baseOf(m),q:1});
   }
   save();paint();toast('Добавлено позиций: '+ids.length)},
   {groups:[...PACK_G], hint:'Коробки, наполнители, открытки, ленты — отметьте всё, что кладёте в заказ',
@@ -1943,10 +1945,6 @@ function ordPackQty(mid,v){
  const o=ORD(ordId);if(!o)return;
  const it=(o.pack||[]).find(x=>x.mid===mid);if(!it)return;
  it.q=Math.max(0,parseFloat(v)||0);save();paint()}
-function ordPackPrice(mid,v){
- const o=ORD(ordId);if(!o)return;
- const it=(o.pack||[]).find(x=>x.mid===mid);if(!it)return;
- it.price=Math.max(0,parseFloat(v)||0);save();paint()}
 function ordPackDel(mid){
  const o=ORD(ordId);if(!o)return;
  o.pack=(o.pack||[]).filter(x=>x.mid!==mid);save();paint()}
@@ -1957,8 +1955,6 @@ function ordRefreshPrices(){
  let n=0;
  for(const it of o.items){const r=REC(it.rid);if(!r)continue;
   const p=priceOf(r,calc(r).cost); if(Math.abs(p-it.price)>0.005){it.price=p;n++}}
- for(const it of (o.pack||[])){const m=MAT(it.mid);if(!m)continue;
-  const p=rnd(matPrice(m),2); if(Math.abs(p-it.price)>0.005){it.price=p;n++}}
  save();paint();toast(n?'Обновлено цен: '+n:'Цены и так актуальные')}
 function orderView(){
  const o=ORD(ordId);
@@ -1973,7 +1969,7 @@ function orderView(){
   <div><div class="l">Позиций</div><div class="v num">${(o.items||[]).length+(o.pack||[]).length}</div></div>
   `:`
   <div><div class="l">Стоимость заказа</div><div class="v num">${fmt(s,0)} ₽</div>
-   <div class="xs mut">${orderPackSum(o)?'изделия '+fmt(orderItemsSum(o),0)+' + упаковка '+fmt(orderPackSum(o),0):'изделия'}</div></div>
+   <div class="xs mut">изделия</div></div>
   <div><div class="l">Налог</div><div class="v num" style="color:var(--warn)">${fmt(налог,0)} ₽</div>
    <div class="xs mut">${taxPct(o.tax)?taxPct(o.tax)+' %':'не начисляется'}</div></div>
   <div><div class="l">К получению</div><div class="v num" style="color:var(--ok)">${fmt(нетто,0)} ₽</div></div>
@@ -2031,16 +2027,12 @@ function orderView(){
  </div>
  <div class="card">
   <div class="row" style="margin-bottom:10px"><span class="dot" style="background:${col('pack')}"></span>
-   <h3 class="sm">Упаковка заказа</h3><span class="sp"></span>
-   <b class="num sm">${fmt(orderPackSum(o),2)} ₽</b></div>
+   <h3 class="sm">Упаковка заказа</h3><span class="sp"></span></div>
   ${(o.pack||[]).length?o.pack.map(it=>`<div class="lrow"><div style="flex:1;min-width:0">
     <div class="n2">${esc(it.n)}</div>
-    <div class="s2">${fmt((+it.price||0)*(+it.q||0),2)} ₽</div>
     <div class="row" style="gap:8px;margin-top:6px">
      <input class="mini" style="width:64px" type="number" step="any" min="0" value="${it.q}" onchange="ordPackQty(${jq(it.mid)},this.value)">
-     <span class="xs mut">${esc(it.u||'шт')} ×</span>
-     <input class="mini" style="width:88px" type="number" step="any" min="0" value="${it.price}" onchange="ordPackPrice(${jq(it.mid)},this.value)">
-     <span class="xs mut">₽</span><span class="sp"></span>
+     <span class="xs mut">${esc(it.u||'шт')}</span><span class="sp"></span>
      <a class="xs" style="color:var(--bad)" onclick="ordPackDel(${jq(it.mid)})">убрать</a></div>
    </div></div>`).join('')
    :'<div class="sm mut" style="padding:8px 0">Коробки, наполнители, открытки, ленты — пока ничего не добавлено.</div>'}
