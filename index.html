@@ -2026,7 +2026,7 @@ function orderView(){
    </div></div>`}).join('')
    :'<div class="sm mut" style="padding:8px 0">Пока пусто — добавьте изделия.</div>'}
   <button class="btn g sm2 full" style="margin-top:10px" onclick="ordAddItems()">+ добавить изделия</button>
-  ${(o.items||[]).length?`<p class="xs mut" style="margin:10px 0 0">Цены записаны на момент добавления и сами не меняются — в заказе должно остаться то, по чему продали.
+  ${(o.items||[]).length?`<p class="xs mut" style="margin:10px 0 0">Цена товара корректируется (подставляется) на момент реализации.
    <a href="#" onclick="ordRefreshPrices();return false">Подставить нынешние</a>.</p>`:''}
  </div>
  <div class="card">
@@ -2045,8 +2045,6 @@ function orderView(){
    </div></div>`).join('')
    :'<div class="sm mut" style="padding:8px 0">Коробки, наполнители, открытки, ленты — пока ничего не добавлено.</div>'}
   <button class="btn g sm2 full" style="margin-top:10px" onclick="ordAddPack()">+ добавить упаковку</button>
-  ${(o.pack||[]).length?`<p class="xs mut" style="margin:10px 0 0">Подставлена закупочная цена — поправьте на ту, по которой берёте с клиента.
-   Упаковка входит в стоимость заказа, значит и в налог.</p>`:''}
  </div>
  <div class="card"><button class="btn d full" onclick="ordDel()">Удалить заказ</button></div>
  <div style="height:8px"></div></div>`}
