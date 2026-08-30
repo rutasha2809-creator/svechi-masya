@@ -273,7 +273,7 @@ a{cursor:pointer}
       <b style="color:var(--ink)">Купили материал</b> → «Склад» → «Внести закупку». Остаток вырастет, цена пересчитается сама.<br><br>
       <b style="color:var(--ink)">Изменилась цена</b> → откройте материал в «Складе» или нажмите на цену прямо в составе изделия.<br><br>
       <b style="color:var(--ink)">Посчитать изделие</b> → «Изделия» → выберите → меняйте состав и параметры, сверху сразу видно новую себестоимость. Не понравилось — «Отменить».<br><br>
-      <b style="color:var(--ink)">Сделали партию</b> → «Выпуск» → материалы спишутся со склада.<br><br>
+      <b style="color:var(--ink)">Продали или сделали изделия</b> → «Заказы» → соберите заказ → «Списать материалы со склада». Для витрины, образцов и подарков — тот же заказ с галочкой «не в заказ — для своих целей».<br><br>
       <b style="color:var(--ink)">Новая категория</b> → здесь, «Управлять категориями», или прямо в карточке изделия в списке категорий.
     </div>
   </div>
@@ -527,7 +527,8 @@ function allMonths(){
 }
 /* ============ ОБЩАЯ БАЗА ============ */
 const SB={url:'https://ahjfdswfafiborxplndr.supabase.co',key:'sb_publishable_BKIZ4v0bEBDZdu7glMh3pw_hVTFSSrH'};
-const AKEY='masya_auth_v1', MKEY='masya_mode_v1';
+const AKEY='masya_auth_v1', MKEY='masya_mode_v1', BKEY='masya_bk_day_v1';
+let RECTOK=null;         // токен из ссылки восстановления пароля
 let AU=null;            // сессия: {access_token,refresh_token,expires_at,email}
 let MODE=null;          // 'cloud' | 'local' | null (ещё не выбрано)
 let CL={ver:0,busy:false,again:false,err:null,at:null,by:null,conflict:false,wipe:false,online:navigator.onLine};
@@ -671,7 +672,78 @@ async function cloudFirstSync(){
    S=cur.data; S.settings=Object.assign({},DEF_SET,S.settings||{}); save(true); toast('Данные загружены из общей базы');
   }
  }
- startPoll(); return true;
+ startPoll(); bkAuto(); return true;
+}
+/* ---- резервные копии в общей базе (таблица app_backups) ---- */
+const BK_KEEP=14;
+async function bkList(){
+ if(MODE!=='cloud'||!AU)return null;
+ if(!await ensureToken())return null;
+ try{
+  const r=await sbFetch('/rest/v1/app_backups?select=id,made_at,made_by,version&order=made_at.desc&limit=40');
+  if(!r.ok)throw new Error('код '+r.status);
+  return await r.json();
+ }catch(e){return null}
+}
+async function bkMake(auto){
+ if(MODE!=='cloud'||!AU)return false;
+ if(!await ensureToken())return false;
+ try{
+  const r=await sbFetch('/rest/v1/app_backups',{method:'POST',headers:{Prefer:'return=minimal'},
+   body:JSON.stringify({data:S,version:CL.ver,made_by:whoAmI()})});
+  if(!r.ok)throw new Error('код '+r.status);
+  lsSet(BKEY,new Date().toISOString().slice(0,10));
+  await bkPrune();
+  return true;
+ }catch(e){if(!auto)toast('Копию сделать не удалось: '+e.message);return false}
+}
+async function bkPrune(){
+ const list=await bkList(); if(!list||list.length<=BK_KEEP)return;
+ const old=list.slice(BK_KEEP).map(x=>x.id).filter(x=>x!=null);
+ if(!old.length)return;
+ try{await sbFetch('/rest/v1/app_backups?id=in.('+old.join(',')+')',{method:'DELETE'})}catch(e){}
+}
+/* Раз в сутки при первом открытии — снимок состояния. Пустое состояние не сохраняем. */
+async function bkAuto(){
+ if(MODE!=='cloud'||!AU)return;
+ if(lsGet(BKEY)===new Date().toISOString().slice(0,10))return;
+ if(!((S.materials||[]).length||(S.recipes||[]).length))return;
+ if(await bkMake(true))renderBk();
+}
+async function bkData(id){
+ if(!await ensureToken())return null;
+ try{
+  const r=await sbFetch('/rest/v1/app_backups?id=eq.'+id+'&select=data,made_at');
+  if(!r.ok)throw new Error('код '+r.status);
+  const rows=await r.json();
+  return rows.length?rows[0]:null;
+ }catch(e){toast('Копия не читается: '+e.message);return null}
+}
+async function bkRestore(id){
+ if(!confirm('Взять эту копию? То, что сейчас в общей базе, будет заменено.'))return;
+ const row=await bkData(id); if(!row)return;
+ const o=row.data;
+ if(!o||!o.materials||!o.recipes){toast('Копия не читается');return}
+ S=o; S.settings=Object.assign({},DEF_SET,S.settings||{}); save(true);
+ await cloudPush(true);
+ render(); renderCloudCard(); toast('Копия восстановлена');
+}
+async function bkDown(id){
+ const row=await bkData(id); if(!row||!row.data)return;
+ dl('свечи-мася-копия-'+String(row.made_at||'').slice(0,10)+'.json',JSON.stringify(row.data,null,1));
+ toast('Файл скачан');
+}
+async function renderBk(){
+ const el=document.getElementById('bk-box'); if(!el)return;
+ const list=await bkList();
+ if(!list){el.innerHTML='<span class="xs mut">Список копий недоступен: похоже, таблица копий в базе ещё не заведена.</span>';return}
+ if(!list.length){el.innerHTML='<span class="xs mut">Копий пока нет.</span>';return}
+ el.innerHTML=list.slice(0,BK_KEEP).map(b=>`<div class="lrow"><div>
+   <div class="n2">${esc(new Date(b.made_at).toLocaleString('ru-RU'))}</div>
+   <div class="s2">${esc(b.made_by||'—')}</div></div>
+  <div style="text-align:right;white-space:nowrap">
+   <a class="xs" onclick="bkDown(${b.id})">скачать</a> ·
+   <a class="xs" onclick="bkRestore(${b.id})">восстановить</a></div></div>`).join('');
 }
 /* ============ UI ============ */
 const PACK_G=new Set(['box','pack','label','ribbon']);
@@ -862,7 +934,7 @@ function renderProd(){
     <b style="color:var(--ink)">1.</b> «Склад» → «+ Новый материал». Заведите то, из чего делаете: воск, фитиль, отдушку, коробку.<br>
     <b style="color:var(--ink)">2.</b> «Склад» → «+ Внести закупку». Укажите сколько купили и за сколько — цена за грамм посчитается сама.<br>
     <b style="color:var(--ink)">3.</b> Здесь → «+ Новое изделие». Соберите состав из своих материалов.<br>
-    <b style="color:var(--ink)">4.</b> «Выпуск» — списать материалы со склада на партию.
+    <b style="color:var(--ink)">4.</b> «Заказы» → соберите заказ и нажмите «Списать материалы со склада».
    </div>
    <div class="hsep"></div>
    <p class="xs mut" style="margin:0">Хотите посмотреть на готовом примере — «Ещё» → «Загрузить пример из Excel».</p>
@@ -934,7 +1006,7 @@ function recipeView(){
   <div class="stack">${bar}</div>
   <div style="margin-top:10px">${legend}</div>
  </div>
- ${['mat','pack','other'].map(k=>blockHtml(k,buck[k],sum(k),hid[k])).join('')}
+ ${['mat','pack','other'].filter(k=>k!=='pack'||buck.pack.length).map(k=>blockHtml(k,buck[k],sum(k),hid[k])).join('')}
  ${params.length?`<div class="card"><h3 class="sm" style="margin-bottom:10px">Параметры расчёта</h3>
    <div class="grid2">${params.map(k=>`<label class="f"><span>${esc(PKEY[k]||k)}</span>
    <input type="number" step="any" value="${r.p[k]??''}" onchange="D.p['${k}']=parseFloat(this.value)||0;paint()"></label>`).join('')}</div>
@@ -962,6 +1034,7 @@ function blockHtml(k,arr,s,hid){
   ${arr.length?arr.map(x=>lineHtml(x)).join(''):'<div class="sm mut" style="padding:8px 0">Ничего не добавлено</div>'}
   ${open&&hid.length?`<div class="hsep"></div><div class="xs mut" style="padding:4px 0">Свободные слоты — нажмите, чтобы заполнить</div>${hid.map(x=>lineHtml(x)).join('')}`:''}
   ${hid&&hid.length?`<a class="xs" style="display:inline-block;margin-top:8px" onclick="showEmpty['${k}']=${!open};paint()">${open?'скрыть свободные слоты':'показать свободные слоты ('+hid.length+')'}</a>`:''}
+  ${k==='pack'&&arr.length?`<button class="btn d sm2 full" style="margin-top:8px" onclick="delPackLines()">Удалить все строки упаковки</button>`:''}
   ${addable?`<button class="btn g sm2 full" style="margin-top:8px" onclick="addLine('mat')">+ добавить материал</button>`
    :k==='other'?`<div class="grid2" style="margin-top:8px">
      <button class="btn g sm2" onclick="addOther('e')">+ электроэнергия</button>
@@ -975,6 +1048,13 @@ function lineHtml(x){
   <div class="s2">${esc(x.name||'—')}${x.q!=null?` · ${qfmt(x.q)} ${esc(x.unit||'')}`:''}</div></div>
   <div style="text-align:right">${x.up!=null&&x.mid?`<a class="prc num" onclick="event.stopPropagation();editPrice(${jq(x.mid)})">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</a>`:''}
   <div class="c2">${x.c?fmt(x.c,2)+' ₽':'—'}</div></div></div>`}
+/* Упаковка в изделие больше не входит: строки старых изделий убираются одной кнопкой. */
+function delPackLines(){
+ if(!confirm('Убрать из изделия все строки упаковки? Коробки, ленты и открытки выбираются в заказе.'))return;
+ D.l=(D.l||[]).filter(x=>{const m=x.m?MAT(x.m):null; const g=x.g||(m?m.g:null); return !PACK_G.has(g)});
+ const i=S.recipes.findIndex(x=>x.id===Did);
+ if(i>=0){S.recipes[i]=JSON.parse(JSON.stringify(D));save()}
+ toast('Упаковка убрана из изделия');paint()}
 function saveDraft(){const i=S.recipes.findIndex(x=>x.id===Did);S.recipes[i]=JSON.parse(JSON.stringify(D));save();toast('Сохранено');paint()}
 function dupRecipe(){const c=JSON.parse(JSON.stringify(D));c.id='r'+Date.now();c.n=D.n+' (копия)';delete c.xl;
  S.recipes.push(c);save();toast('Копия создана');openRecipe(c.id)}
@@ -1608,7 +1688,7 @@ function avgView(){
     <td></td><td class="num"><b>${fmt(tot.cs,2)}</b></td></tr>
   </tbody></table></div>`
  :`<div class="card"><h3 style="margin-bottom:8px">За этот месяц движений нет</h3>
-   <p class="sm mut" style="margin:0">Ведомость наполняется закупками и выпусками. Внесите закупку на складе или спишите материалы во вкладке «Выпуск».</p></div>`}
+   <p class="sm mut" style="margin:0">Ведомость наполняется закупками и списаниями. Внесите закупку на складе или спишите материалы по заказу.</p></div>`}
  ${accHtml(avgYM)}
  ${taxMonthHtml(avgYM)}
  ${itogoHtml(avgYM,tot)}
@@ -1681,7 +1761,7 @@ function logUndo(g){
   if(!m.lots.length)m.s=0; else syncStock(m);
  }
  S.log=(S.log||[]).filter(x=>x!==e);
- save();render();paint();toast(e.t==='make'?'Выпуск отменён':'Закупка удалена');
+ save();render();paint();toast(e.t==='make'?'Списание отменено':'Закупка удалена');
 }
 
 /* ============ ОБЩЕПРОИЗВОДСТВЕННЫЕ И ОБЩЕХОЗЯЙСТВЕННЫЕ ============
@@ -1757,13 +1837,13 @@ function accHtml(ym){
    <tbody>${строки}</tbody></table></div>
   <p class="xs mut" style="margin:10px 0 0">Остаток на конец переходит на начало следующего месяца. Плюс — потратили больше, чем разнесли по изделиям; минус — наоборот.</p>`}
   ${нетРазделов?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения нет. Отметьте разделы в «Ещё → Разделы справочника».</div>`:''}
-  ${без?`<div class="card tight sm mut" style="margin-top:10px">Выпусков без разбивки по статьям: ${без}. Это записи, сделанные до появления этой ведомости — по ним видна только общая себестоимость.</div>`:''}
+  ${без?`<div class="card tight sm mut" style="margin-top:10px">Списаний без разбивки по статьям: ${без}. Это записи, сделанные до появления этой ведомости — по ним видна только общая себестоимость.</div>`:''}
  </div>`;
 }
 
 /* ============ ЗАКАЗЫ И НАЛОГ ============
    Заказ — то, что продано клиенту: список изделий с количеством и налог
-   с итоговой суммы. Материалы заказ НЕ списывает, это делает «Выпуск».
+   с итоговой суммы. Материалы списывает сам заказ — кнопкой «Списать материалы со склада».
    Цены фиксируются в момент создания заказа: потом они поменяются, а в
    заказе должно остаться то, по чему на самом деле продали.            */
 const TAXES={none:{n:'Без налога',pct:0},fiz:{n:'4 % — физлицам',pct:4},ur:{n:'6 % — юрлицам',pct:6}};
@@ -2353,7 +2433,8 @@ function gateLogin(){
   <label class="f"><span>Пароль</span><input id="g-pass" type="password" autocomplete="current-password"></label>
   <div id="g-err" class="sm" style="color:var(--bad);min-height:18px;margin-bottom:8px"></div>
   <button class="btn full" id="g-go" onclick="doGateLogin()">Войти</button>
-  <button class="btn g full" style="margin-top:10px" onclick="gateChoose()">Назад</button>`;
+  <button class="btn g full" style="margin-top:10px" onclick="gateChoose()">Назад</button>
+  <a class="xs" style="display:block;text-align:center;margin-top:12px;cursor:pointer" onclick="gateForgot()">Забыли пароль?</a>`;
  setTimeout(()=>{const e=document.getElementById('g-mail');if(e&&!e.value)e.focus();else{const p=document.getElementById('g-pass');if(p)p.focus()}},60);
  const go=()=>doGateLogin();
  ['g-mail','g-pass'].forEach(i=>{const e=document.getElementById(i);if(e)e.onkeydown=ev=>{if(ev.key==='Enter')go()}});
@@ -2373,6 +2454,75 @@ async function doGateLogin(){
   err.textContent=/invalid/i.test(e.message)?'Неверная почта или пароль':e.message;
   btn.disabled=false; btn.textContent='Войти';
  }
+}
+/* ---- восстановление пароля ---- */
+function gateForgot(){
+ document.getElementById('gate-body').innerHTML=`
+  <label class="f"><span>Почта</span><input id="g-rmail" type="email" autocomplete="username" placeholder="team@..." value="${esc((AU&&AU.email)||'')}"></label>
+  <div id="g-err" class="sm" style="color:var(--bad);min-height:18px;margin-bottom:8px"></div>
+  <button class="btn full" id="g-rgo" onclick="doGateForgot()">Прислать ссылку</button>
+  <button class="btn g full" style="margin-top:10px" onclick="gateLogin()">Назад</button>
+  <p class="xs mut" style="margin-top:14px;line-height:1.5">На почту придёт письмо со ссылкой. Откройте её на этом устройстве — приложение попросит задать новый пароль.</p>`;
+ const e=document.getElementById('g-rmail'); if(e)e.onkeydown=ev=>{if(ev.key==='Enter')doGateForgot()};
+}
+async function doGateForgot(){
+ const btn=document.getElementById('g-rgo'), err=document.getElementById('g-err');
+ const mail=(document.getElementById('g-rmail').value||'').trim();
+ if(!mail){err.textContent='Введите почту';return}
+ btn.disabled=true; btn.textContent='Отправляю…'; err.textContent='';
+ try{
+  const back=location.origin+location.pathname;
+  const r=await fetch(SB.url+'/auth/v1/recover?redirect_to='+encodeURIComponent(back),{method:'POST',
+   headers:{apikey:SB.key,'Content-Type':'application/json'},body:JSON.stringify({email:mail})});
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.error_description||j.error||('код '+r.status))}
+  document.getElementById('gate-body').innerHTML=`
+   <p class="sm" style="margin:0 0 16px">Письмо отправлено на ${esc(mail)}. Откройте ссылку из письма на этом устройстве.</p>
+   <button class="btn g full" onclick="gateLogin()">Назад ко входу</button>`;
+ }catch(e){err.textContent=e.message; btn.disabled=false; btn.textContent='Прислать ссылку'}
+}
+/* Ссылка из письма приходит с меткой в адресе: #access_token=…&type=recovery */
+function recoveryLink(){
+ const h=(location.hash||'').replace(/^#/,''); if(!h)return null;
+ const p={};
+ h.split('&').forEach(kv=>{const i=kv.indexOf('=');if(i<0)return;
+  try{p[decodeURIComponent(kv.slice(0,i))]=decodeURIComponent(kv.slice(i+1).replace(/\+/g,' '))}catch(e){}});
+ if(p.type==='recovery'&&p.access_token)return {tok:p.access_token};
+ if(p.error_description)return {err:p.error_description};
+ return null;
+}
+function clearHash(){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){location.hash=''}}
+function gateNewPass(tok){
+ RECTOK=tok; gateShow();
+ document.getElementById('gate-body').innerHTML=`
+  <label class="f"><span>Новый пароль</span><input id="g-p1" type="password" autocomplete="new-password"></label>
+  <label class="f"><span>Ещё раз</span><input id="g-p2" type="password" autocomplete="new-password"></label>
+  <div id="g-err" class="sm" style="color:var(--bad);min-height:18px;margin-bottom:8px"></div>
+  <button class="btn full" id="g-pgo" onclick="doNewPass()">Сохранить пароль</button>`;
+ const go=()=>doNewPass();
+ ['g-p1','g-p2'].forEach(i=>{const e=document.getElementById(i);if(e)e.onkeydown=ev=>{if(ev.key==='Enter')go()}});
+ setTimeout(()=>{const e=document.getElementById('g-p1');if(e)e.focus()},60);
+}
+function gateLinkBad(msg){
+ gateShow();
+ document.getElementById('gate-body').innerHTML=`
+  <p class="sm" style="margin:0 0 16px;color:var(--bad)">Ссылка не сработала: ${esc(msg||'срок действия истёк')}. Запросите новую.</p>
+  <button class="btn full" onclick="gateForgot()">Прислать ссылку заново</button>
+  <button class="btn g full" style="margin-top:10px" onclick="gateChoose()">Назад</button>`;
+ clearHash();
+}
+async function doNewPass(){
+ const btn=document.getElementById('g-pgo'), err=document.getElementById('g-err');
+ const a=document.getElementById('g-p1').value, b=document.getElementById('g-p2').value;
+ if((a||'').length<6){err.textContent='Пароль короче шести знаков';return}
+ if(a!==b){err.textContent='Пароли не совпадают';return}
+ btn.disabled=true; btn.textContent='Сохраняю…'; err.textContent='';
+ try{
+  const r=await fetch(SB.url+'/auth/v1/user',{method:'PUT',
+   headers:{apikey:SB.key,'Content-Type':'application/json',Authorization:'Bearer '+RECTOK},
+   body:JSON.stringify({password:a})});
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.error_description||j.error||('код '+r.status))}
+  RECTOK=null; clearHash(); toast('Пароль изменён'); gateLogin();
+ }catch(e){err.textContent=e.message; btn.disabled=false; btn.textContent='Сохранить пароль'}
 }
 function gateLocal(){MODE='local';lsSet(MKEY,'local');document.getElementById('gate').style.display='none';render();syncBadge()}
 function cloudResolve(mine){
@@ -2397,7 +2547,13 @@ function renderCloudCard(){
    <button class="btn g" onclick="cloudPoll().then(()=>{renderCloudCard();toast('Проверено')})">Обновить сейчас</button>
    <button class="btn d" onclick="if(confirm('Выйти из общей базы? Данные останутся в этом браузере.')){sbLogout();render();syncBadge();renderCloudCard()}">Выйти</button>
   </div>
-  <p class="xs mut" style="margin:10px 0 0">Чужие правки подтягиваются автоматически раз в 20 секунд.</p>`;
+  <p class="xs mut" style="margin:10px 0 0">Чужие правки подтягиваются автоматически раз в 20 секунд.</p>
+  <div class="hsep" style="margin:12px 0"></div>
+  <div class="row" style="margin-bottom:8px"><h3 class="sm">Копии базы</h3><span class="sp"></span>
+   <button class="btn g sm2" onclick="bkMake().then(ok=>{if(ok)toast('Копия сделана');renderBk()})">Сделать копию</button></div>
+  <div id="bk-box" class="sm mut"><span class="xs mut">Загружаю…</span></div>
+  <p class="xs mut" style="margin:10px 0 0">Копия состояния сохраняется в общей базе раз в сутки, хранятся последние ${BK_KEEP}.</p>`;
+ renderBk();
 }
 
 /* --- старт --- */
@@ -2414,13 +2570,16 @@ onlyUsed=!!S.demo;
 authLoad();
 render();
 (async()=>{
+ const rec=recoveryLink();
+ if(rec&&rec.err){gateLinkBad(rec.err);return}
+ if(rec&&rec.tok){gateNewPass(rec.tok);return}
  if(MODE==='cloud'&&AU){
   const ok=await ensureToken();
   if(!ok){gateShow();gateLogin();return}
   const cur=await cloudPull(true);
   if(cur){CL.ver=cur.version;
    if(cur.data&&cur.data.materials){S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});save(true);render()}}
-  startPoll(); syncBadge();
+  startPoll(); syncBadge(); bkAuto();
  }else if(MODE!=='local'){ gateShow(); }
 })();
 addEventListener('online',()=>{CL.err=null;syncBadge();cloudPoll()});
