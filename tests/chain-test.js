@@ -136,6 +136,62 @@ T.near(строка.wq, waxNet * 10, 0.001, 'списано воска за ме
 T.near(строка.avg, 0.5, 0.0001, 'средняя цена воска за месяц, ₽/г');
 T.near(строка.cq, 5000 - waxNet * 10, 0.001, 'остаток на конец месяца, г');
 
+T.head('Шаг 9б. Новое изделие — тип задаёт параметры');
+/* Раньше любое новое изделие получало восковые параметры, и у гипсового
+   подноса просили заполнить объём формы для воска, отдушку и фитиль. */
+S.cats.push('Декор');
+app.document.getElementById('r-n').value = 'Овальный поднос из гипса';
+app.document.getElementById('r-c').value = 'Декор';
+app.setNewKind('gyps');
+app.createRecipe();
+const поднос = S.recipes.find(r => r.n === 'Овальный поднос из гипса');
+T.check(!!поднос, 'гипсовое изделие создано');
+T.check(!('volWax_A' in поднос.p), 'объёма формы для воска у гипсового изделия нет');
+T.check(!('fragrPct_A' in поднос.p), 'отдушки нет');
+T.check(!('wickLen_A' in поднос.p), 'длины фитиля нет');
+T.check('volGypsum_A' in поднос.p, 'зато есть объём формы для гипса');
+T.check(!поднос.wr, 'формулы усадки воска нет');
+T.check(поднос.l.length === 2, 'сразу заведены две строки — гипс и вода');
+T.check(поднос.l[0].q.type === 'gypsumMass', 'первая строка считается как масса гипса');
+T.check(поднос.l[1].q.type === 'water', 'вторая — вода');
+
+const смесь = мат('gypsum::скульптор', 'gypsum', 'СКУЛЬПТОР', 'г', 'кг');
+смесь.p = 0.05; смесь.x = { coef: 1.65 };
+поднос.l[0].m = смесь.id; поднос.l[1].m = смесь.id;
+поднос.p.volGypsum_A = 300;
+const рп = app.calc(поднос);
+T.near(рп.d.gypsum, 495, 0.0001, 'масса гипса = 300 мл × 1,65, г');
+T.near(рп.d.water, 124, 0.0001, 'вода = 25 % от гипса, г');
+T.near(рп.det.find(x => x.lb === 'гипс').c, 24.75, 0.01, 'гипс в деньгах, ₽');
+T.near(рп.det.find(x => x.lb === 'вода').c, 0, 0.0001, 'вода бесплатная');
+
+app.document.getElementById('r-n').value = 'Свеча тестовая 2';
+app.setNewKind('wax');
+app.createRecipe();
+const свеча2 = S.recipes.find(r => r.n === 'Свеча тестовая 2');
+T.check('volWax_A' in свеча2.p && 'fragrPct_A' in свеча2.p, 'у воскового изделия восковые параметры на месте');
+T.check(!!свеча2.wr, 'и формула усадки воска');
+
+app.document.getElementById('r-n').value = 'Набор';
+app.setNewKind('other');
+app.createRecipe();
+const набор = S.recipes.find(r => r.n === 'Набор');
+T.check(Object.keys(набор.p).length === 0, 'у прочего изделия параметров расчёта нет');
+T.check(набор.l.length === 0, 'и пустой состав');
+
+T.head('Коэффициент смеси правится в карточке материала');
+T.check(/Коэффициент смеси/.test(app.matView(смесь.id)), 'поле есть у материалов из раздела гипса');
+T.check(!/Коэффициент смеси/.test(app.matView(воск.id)), 'у воска такого поля нет');
+app.document.getElementById('m-n').value = смесь.n;
+app.document.getElementById('m-g').value = 'gypsum';
+app.document.getElementById('m-u').value = 'г';
+app.document.getElementById('m-min').value = '0';
+app.document.getElementById('m-coef').value = '1.95';
+app.matSave(смесь.id);
+T.near(смесь.x.coef, 1.95, 0.0001, 'коэффициент сохранился (акрил)');
+T.near(app.calc(поднос).d.gypsum, 300 * 1.95, 0.0001, 'масса гипса пересчиталась, г');
+смесь.x.coef = 1.65;
+
 T.head('Шаг 10. Все экраны строятся');
 const экран = (имя, fn) => {
   try {
@@ -160,6 +216,8 @@ app.D = свеча; app.Did = свеча.id;
 экран('Разделы справочника', app.groupsView);
 экран('Категории', app.catsView);
 экран('Новое изделие', app.newRecipeView);
+экран('Новое изделие — гипсовое', () => { app.setNewKind('gyps'); return app.newRecipeView(); });
+экран('Карточка гипсового изделия', () => { app.D = поднос; app.Did = поднос.id; const h = app.recipeView(); app.D = свеча; app.Did = свеча.id; return h; });
 экран('Выбор нескольких позиций', () => {
   app.pickMany('Материалы', 'все', () => {});
   app.pickToggle(воск.id); app.pickToggle(коробка.id);
@@ -169,8 +227,8 @@ app.D = свеча; app.Did = свеча.id;
 T.head('Шаг 11. Сохранение и загрузка');
 app.save(true);
 const копия = JSON.parse(app.localStorage.getItem('masya_cost_v1'));
-T.check(копия.materials.length === 5, 'состояние сохранилось: 5 материалов');
-T.check(копия.recipes.length === 1, 'состояние сохранилось: 1 изделие');
+T.check(копия.materials.length === S.materials.length, 'состояние сохранилось: материалов ' + S.materials.length);
+T.check(копия.recipes.length === S.recipes.length, 'состояние сохранилось: изделий ' + S.recipes.length);
 T.check(копия.log.length > 0, 'журнал сохранился');
 
 T.done('вся цепочка');

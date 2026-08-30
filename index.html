@@ -1233,6 +1233,9 @@ function matView(id){
   </div>
   ${L.length?'<p class="xs mut" style="margin:-4px 0 12px">Единицу нельзя менять, пока есть партии — иначе остатки перестанут сходиться.</p>':''}
   <label class="f"><span>Предупреждать, когда остаток ниже</span><input id="m-min" type="number" step="any" value="${m.min||0}"></label>
+  ${m.g==='gypsum'?`<label class="f"><span>Коэффициент смеси</span>
+    <input id="m-coef" type="number" step="0.01" value="${(m.x&&m.x.coef)||1.65}"></label>
+   <p class="xs mut" style="margin:-4px 0 12px">Сколько граммов смеси уходит на 1 мл формы. СКУЛЬПТОР — 1,65, жидкая керамика — 1,75, фрипласт — 1,8, акрил — 1,95. По нему считается масса гипса в изделии, а вода — 25 % от неё.</p>`:''}
   <button class="btn full" onclick="matSave(${jq(id)})">Сохранить</button>
  </div>
  <div class="card"><h3 class="sm" style="margin-bottom:8px">Используется в изделиях: ${used.length}</h3>
@@ -1316,6 +1319,8 @@ function matSave(id){const m=MAT(id);
   if(g('m-p'))m.p=parseFloat(g('m-p').value)||0;
   if(g('m-s'))m.s=parseFloat(g('m-s').value)||0; }
  m.min=parseFloat(g('m-min').value)||0;
+ if(g('m-coef')){const k=parseFloat(g('m-coef').value);
+  m.x=m.x||{}; m.x.coef=isFinite(k)&&k>0?k:1.65}
  syncStock(m); save();toast('Сохранено');back()}
 function delMat(id){if(!confirm('Удалить материал?'))return;S.materials=S.materials.filter(m=>m.id!==id);save();back();toast('Удалён')}
 const UNITS=['г','кг','мл','л','см','м','шт','исп.'];
@@ -1700,13 +1705,32 @@ function clearAll(){
 function newRecipe(){
  if(!allCats().length){S.cats=['мои изделия'];save()}
  stack=[newRecipeView];paint()}
+/* Тип изделия задаёт параметры расчёта. Раньше любое новое изделие получало
+   восковые параметры — объём формы для воска, отдушку, длину фитиля, — и у
+   гипсового подноса просили заполнить поля, которых у него нет. */
+let newKind='wax';
+function setNewKind(k){newKind=k;paint()}
+const KINDS={
+ wax:  {n:'Восковое',  d:'Свечи: объём формы, отдушка, фитиль'},
+ gyps: {n:'Гипсовое',  d:'Гипс и смеси: объём формы, масса гипса и вода считаются сами'},
+ other:{n:'Другое',    d:'Ароматизация, наборы, декор — без параметров'},
+};
 function newRecipeView(){
- return head('Новое изделие','Название и категория — состав добавите следом')+`<div class="wrap" style="padding-top:12px"><div class="card">
+ return head('Новое изделие','Название, тип и категория — состав добавите следом')+`<div class="wrap" style="padding-top:12px"><div class="card">
   <label class="f"><span>Название</span><input id="r-n" placeholder="Например: Свеча Ваниль 200 мл"></label>
-  <label class="f"><span>Категория</span>
+  <div class="f"><span>Из чего изделие</span>
+   <div class="list" style="margin-top:2px">${Object.keys(KINDS).map(k=>`
+    <div class="item ${newKind===k?'on':''}" onclick="setNewKind('${k}')"><div class="row">
+     <span class="ck ${newKind===k?'on':''}" style="border-radius:50%">${newKind===k?'✓':''}</span>
+     <div style="flex:1;min-width:0"><div class="t">${KINDS[k].n}</div>
+     <div class="xs mut">${KINDS[k].d}</div></div></div></div>`).join('')}</div></div>
+  <label class="f" style="margin-top:12px"><span>Категория</span>
    <select id="r-c">${allCats().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
    <option value="__new">+ создать новую категорию…</option></select></label>
-  <div class="card tight sm mut" style="background:var(--soft)">Дальше добавите материалы, упаковку и прочие расходы — себестоимость посчитается сама.</div>
+  <div class="card tight sm mut" style="background:var(--soft)">${
+   newKind==='gyps'?'Сразу появятся две строки — гипс и вода. Выберете смесь, впишете объём формы, а массу гипса и воду приложение посчитает само.'
+   :newKind==='wax'?'Дальше добавите воск, отдушку, фитиль и упаковку — себестоимость посчитается сама.'
+   :'Дальше добавите материалы, упаковку и прочие расходы — себестоимость посчитается сама.'}</div>
   <button class="btn full" style="margin-top:12px" onclick="createRecipe()">Создать изделие</button>
  </div></div>`}
 function createRecipe(){
@@ -1716,9 +1740,21 @@ function createRecipe(){
  if(c==='__new'){const v=prompt('Название новой категории');if(!v||!v.trim())return;c=v.trim();
   S.cats=S.cats||[];if(!allCats().includes(c))S.cats.push(c)}
  const id='r'+Date.now();
- S.recipes.push({id,n,c,p:{volWax_A:0,fragrPct_A:0,wickLen_A:0},
-  wr:{A:'=ROUND(C*0.95,-1)'},l:[],mk:[],en:[],tl:[],ex:0});
- save();render();openRecipe(id);toast('Изделие создано')}
+ const r={id,n,c,p:{},l:[],mk:[],en:[],tl:[],ex:0};
+ if(newKind==='wax'){
+  r.p={volWax_A:0,fragrPct_A:0,wickLen_A:0};
+  r.wr={A:'=ROUND(C*0.95,-1)'};
+ } else if(newKind==='gyps'){
+  r.p={volGypsum_A:0};
+  /* Масса гипса = коэффициент смеси × объём формы, вода = 25 % от гипса.
+     Заводим обе строки сразу — останется выбрать смесь и вписать объём. */
+  r.l=[{r:1,lb:'гипс',g:'gypsum',m:null,q:{type:'gypsumMass',volKey:'volGypsum_A'},fp:0,cf:'mul'},
+       {r:2,lb:'вода',g:'gypsum',m:null,q:{type:'water'},fp:0,cf:'mul'}];
+  showEmpty.mat=true;   // чтобы обе строки было видно сразу, а не под «свободные слоты»
+ }
+ S.recipes.push(r);
+ save();render();openRecipe(id);
+ toast(newKind==='gyps'?'Изделие создано — выберите смесь в строке «гипс»':'Изделие создано')}
 
 /* ============ ОБЩАЯ БАЗА: ИНТЕРФЕЙС ============ */
 function syncBadge(){
