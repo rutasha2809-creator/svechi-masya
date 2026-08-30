@@ -2008,7 +2008,7 @@ function orderView(){
     onchange="ordSet('own',this.checked)"><span>не в заказ — для своих целей</span></label>
   <p class="xs mut" style="margin:6px 0 0">${o.own
    ? 'Витрина, образцы, подарки, задел впрок. Материалы спишутся так же, но выручки и налога нет — в итог месяца этот заказ не попадёт.'
-   : 'Налог считается от стоимости заказа вместе с упаковкой: '+fmt(s,2)+' ₽ × '+taxPct(o.tax)+' % = '+fmt(налог,2)+' ₽.'}</p>
+   : 'Налог считается от итоговой стоимости заказа: '+fmt(s,2)+' ₽ × '+taxPct(o.tax)+' % = '+fmt(налог,2)+' ₽.'}</p>
  </div>
  <div class="card">
   <div class="row" style="margin-bottom:10px"><h3 class="sm">Что в заказе</h3><span class="sp"></span>
