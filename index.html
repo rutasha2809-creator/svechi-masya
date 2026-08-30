@@ -204,6 +204,12 @@ a{cursor:pointer}
   <div class="list" id="list-log"></div>
 </section>
 
+<section id="s-orders">
+  <div id="ord-top"></div>
+  <h3 class="sm mut" style="margin:16px 0 8px">Заказы</h3>
+  <div class="list" id="list-ord"></div>
+</section>
+
 <section id="s-more">
   <div class="card">
     <h3 style="margin-bottom:4px">Как считается цена</h3>
@@ -276,6 +282,7 @@ a{cursor:pointer}
   <button class="on" data-s="prod" onclick="tab('prod')"><svg viewBox="0 0 24 24"><path d="M12 3c1.6 2 2.5 3.4 2.5 4.8A2.5 2.5 0 0 1 12 10a2.5 2.5 0 0 1-2.5-2.2C9.5 6.4 10.4 5 12 3z"/><rect x="6" y="10" width="12" height="11" rx="2.5"/></svg>Изделия</button>
   <button data-s="stock" onclick="tab('stock')"><svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>Склад</button>
   <button data-s="make" onclick="tab('make')"><svg viewBox="0 0 24 24"><path d="M12 3v4"/><path d="M5.5 7.5l2.5 2.5"/><path d="M18.5 7.5L16 10"/><rect x="6" y="10" width="12" height="11" rx="2.5"/></svg>Выпуск</button>
+  <button data-s="orders" onclick="tab('orders')"><svg viewBox="0 0 24 24"><path d="M6 4h12l1.5 16H4.5L6 4z"/><path d="M9 8a3 3 0 0 0 6 0"/></svg>Заказы</button>
   <button data-s="more" onclick="tab('more')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Ещё</button>
 </div></nav>
 
@@ -506,6 +513,7 @@ function avgPrice(m){
 /* все месяцы, в которых были движения хоть по одному материалу */
 function allMonths(){
  const set=new Set();
+ (S.orders||[]).forEach(o=>set.add(ymOf(o.d)));
  (S.materials||[]).forEach(m=>((m.lots)||[]).forEach(l=>set.add(ymOf(l.d))));
  (S.log||[]).forEach(e=>{if(e.use&&e.use.length)set.add(ymOf(e.d))});
  set.add(curYM());
@@ -791,9 +799,17 @@ function pickDone(){
  const s=pickState.sel.slice(), cb=window.__pickMany;
  back(); if(cb)cb(s)}
 function pickRender(title){
- const gs=['все',...groupKeys().filter(g=>S.materials.some(m=>m.g===g))];
+ /* opt.groups — если задан, показываем только эти разделы (так открывается
+    упаковка заказа: коробки, наполнители, наклейки и ленты вместе). */
+ const O0=pickState.opt||{};
+ const огр=Array.isArray(O0.groups)&&O0.groups.length?O0.groups:null;
+ const дост=groupKeys().filter(g=>S.materials.some(m=>m.g===g)&&(!огр||огр.includes(g)));
+ const gs=['все',...дост];
  const q=pickState.q.toLowerCase();
- let rows=S.materials.filter(m=>!isPH(m)&&(pickState.group==='все'||m.g===pickState.group)&&m.n.toLowerCase().includes(q));
+ let rows=S.materials.filter(m=>!isPH(m)
+   &&(!огр||огр.includes(m.g))
+   &&(pickState.group==='все'||m.g===pickState.group)
+   &&m.n.toLowerCase().includes(q));
  rows.sort(byName);
  const total=rows.length; rows=rows.slice(0,80);
  const M=!!pickState.multi, O=pickState.opt||{}, sel=pickState.sel||[];
@@ -803,7 +819,7 @@ function pickRender(title){
  return head(title,M?(O.hint||'Отметьте всё, что нужно — добавится сразу'):'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
  <input id="pk-q" placeholder="Начните вводить название" value="${esc(pickState.q)}" oninput="pickState.q=this.value;paint();setTimeout(()=>{const e=document.getElementById('pk-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)},0)"></div>
- <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?'все разделы':esc(groupName(g))}</div>`).join('')}</div>
+ <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?(огр?'вся упаковка':'все разделы'):esc(groupName(g))}</div>`).join('')}</div>
  ${M?`<div class="row xs" style="margin-bottom:8px">
    <span class="mut">${выбраны.length?'Отмечено: '+выбраны.length:'Пока ничего не отмечено'}</span><span class="sp"></span>
    ${видимые.length?`<a onclick='pickAllShown(${JSON.stringify(видимые)})'>${всеОтмечены?'снять показанные':'отметить все показанные'}</a>`:''}
@@ -1541,6 +1557,7 @@ function avgView(){
   </tbody></table></div>`
  :`<div class="card"><h3 style="margin-bottom:8px">За этот месяц движений нет</h3>
    <p class="sm mut" style="margin:0">Ведомость наполняется закупками и выпусками. Внесите закупку на складе или спишите материалы во вкладке «Выпуск».</p></div>`}
+ ${taxMonthHtml(avgYM)}
  <div class="card tight sm" style="margin-top:12px">
   <b>Как считается.</b> Средняя за месяц = (сумма остатка на начало + сумма всех закупок месяца) ÷ (количество на начало + закупленное количество).
   По этой цене в ведомости списывается всё, что ушло в производство в этом месяце. Остаток на конец переходит на начало следующего месяца.
@@ -1548,6 +1565,253 @@ function avgView(){
   или той, что «в работе». Ведомость нужна бухгалтеру для учёта и сверки, это отдельный отчёт.
  </div></div>`;
 }
+
+/* ============ ЗАКАЗЫ И НАЛОГ ============
+   Заказ — то, что продано клиенту: список изделий с количеством и налог
+   с итоговой суммы. Материалы заказ НЕ списывает, это делает «Выпуск».
+   Цены фиксируются в момент создания заказа: потом они поменяются, а в
+   заказе должно остаться то, по чему на самом деле продали.            */
+const TAXES={none:{n:'Без налога',pct:0},fiz:{n:'4 % — физлицам',pct:4},ur:{n:'6 % — юрлицам',pct:6}};
+function taxPct(k){const t=TAXES[k];return t?t.pct:0}
+function taxName(k){const t=TAXES[k];return t?t.n:TAXES.none.n}
+function orders(){S.orders=S.orders||[];return S.orders}
+function orderItemsSum(o){return rnd((o.items||[]).reduce((a,x)=>a+(+x.price||0)*(+x.q||0),0),2)}
+function orderPackSum(o){return rnd((o.pack||[]).reduce((a,x)=>a+(+x.price||0)*(+x.q||0),0),2)}
+/* Упаковку клиент оплачивает — она входит в стоимость заказа и в базу налога. */
+function orderSum(o){return rnd(orderItemsSum(o)+orderPackSum(o),2)}
+function orderTax(o){return rnd(orderSum(o)*taxPct(o.tax)/100,2)}
+function orderNet(o){return rnd(orderSum(o)-orderTax(o),2)}
+
+/* налог за месяц: начислено по заказам и отметка об оплате */
+function taxPaidMap(){S.taxPaid=S.taxPaid||{};return S.taxPaid}
+function taxMonth(ym){
+ const list=orders().filter(o=>ymOf(o.d)===ym);
+ const по={none:0,fiz:0,ur:0}, налог={none:0,fiz:0,ur:0};
+ list.forEach(o=>{const k=TAXES[o.tax]?o.tax:'none';
+  по[k]+=orderSum(o); налог[k]+=orderTax(o)});
+ const выручка=rnd(list.reduce((a,o)=>a+orderSum(o),0),2);
+ const всего=rnd(list.reduce((a,o)=>a+orderTax(o),0),2);
+ const оплата=taxPaidMap()[ym]||null;
+ return {ym,заказов:list.length,выручка,всего,по,налог:налог,оплата};
+}
+function taxPay(ym){
+ const t=taxMonth(ym);
+ if(!t.всего)return toast('За этот месяц налога нет');
+ if(!confirm(`Отметить налог за ${ymLabel(ym).toLowerCase()} оплаченным?\n\nСумма: ${fmt(t.всего,2)} ₽`))return;
+ taxPaidMap()[ym]={d:Date.now(),sum:t.всего};
+ save();toast('Отмечено');paint()}
+function taxUnpay(ym){
+ if(!confirm('Снять отметку об оплате налога за '+ymLabel(ym).toLowerCase()+'?'))return;
+ delete taxPaidMap()[ym];save();toast('Отметка снята');paint()}
+function taxMonthHtml(ym){
+ const t=taxMonth(ym);
+ const строки=Object.keys(TAXES).filter(k=>t.по[k]>0.005).map(k=>
+  `<tr><td>${esc(TAXES[k].n)}</td><td class="num">${fmt(t.по[k],2)}</td><td class="num">${fmt(t.налог[k],2)}</td></tr>`).join('');
+ const расхождение = t.оплата && Math.abs(t.оплата.sum-t.всего)>0.005;
+ return `<div class="card" style="margin-top:12px">
+  <h3 class="sm" style="margin-bottom:4px">Налог за месяц</h3>
+  <p class="xs mut" style="margin:0 0 10px">${esc(ymLabel(ym))} · заказов: ${t.заказов}</p>
+  ${t.заказов?`<div style="overflow-x:auto"><table class="tt"><thead><tr>
+    <th>Ставка</th><th>Выручка</th><th>Налог</th></tr></thead><tbody>${строки||'<tr><td colspan="3" class="mut">Все заказы без налога</td></tr>'}
+    <tr><td><b>Итого</b></td><td class="num"><b>${fmt(t.выручка,2)}</b></td><td class="num"><b>${fmt(t.всего,2)}</b></td></tr>
+   </tbody></table></div>
+   <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+    ${t.оплата
+     ? `<span class="tag ok">оплачен ${esc(new Date(t.оплата.d).toLocaleDateString('ru-RU'))} · ${fmt(t.оплата.sum,2)} ₽</span>
+        <span class="sp"></span><a class="xs" onclick="taxUnpay(${jq(ym)})">снять отметку</a>`
+     : `<button class="btn sm2" ${t.всего?'':'disabled'} onclick="taxPay(${jq(ym)})">Отметить оплаченным${t.всего?' — '+fmt(t.всего,2)+' ₽':''}</button>`}
+   </div>
+   ${расхождение?`<div class="card tight sm warnbox" style="margin-top:10px">Отмечено ${fmt(t.оплата.sum,2)} ₽, а сейчас начислено ${fmt(t.всего,2)} ₽ — после отметки заказы месяца меняли. Снимите отметку и поставьте заново.</div>`:''}`
+  :'<div class="sm mut" style="padding:6px 0">За этот месяц заказов не было.</div>'}
+ </div>`;
+}
+
+/* ---- экран «Заказы» ---- */
+function renderOrders(){
+ const L=orders().slice().sort((a,b)=>(b.d||0)-(a.d||0));
+ const месяц=curYM(), t=taxMonth(месяц);
+ document.getElementById('ord-top').innerHTML=`
+  <div class="kpi" style="margin-bottom:12px">
+   <div><div class="l">Заказов за ${esc(ymLabel(месяц).toLowerCase())}</div><div class="v num">${t.заказов}</div></div>
+   <div><div class="l">Выручка</div><div class="v num" style="color:var(--acc)">${fmt(t.выручка,0)} ₽</div></div>
+   <div><div class="l">Налог</div><div class="v num" style="color:var(--warn)">${fmt(t.всего,0)} ₽</div>
+    <div class="xs mut">${t.оплата?'оплачен':'не оплачен'}</div></div>
+   <div><div class="l">К получению</div><div class="v num" style="color:var(--ok)">${fmt(rnd(t.выручка-t.всего,2),0)} ₽</div></div>
+  </div>
+  <button class="btn full" onclick="newOrder()">+ Новый заказ</button>`;
+ document.getElementById('list-ord').innerHTML=L.length?L.map(o=>{
+  const s=orderSum(o), n=orderTax(o), поз=(o.items||[]).length;
+  return `<div class="item" onclick="openOrder(${jq(o.id)})"><div class="row">
+   <div style="flex:1;min-width:0">
+    <div class="t">${esc(o.n||'Заказ без названия')}</div>
+    <div class="xs mut">${o.d?new Date(o.d).toLocaleDateString('ru-RU'):''} · позиций: ${поз}${n?' · налог '+fmt(n,2)+' ₽':' · без налога'}</div></div>
+   <div style="text-align:right"><div class="b num">${fmt(s,0)} ₽</div>
+    ${n?`<div class="xs mut num">− ${fmt(n,0)} ₽</div>`:''}</div></div></div>`}).join('')
+  :`<div class="card"><h3 style="margin-bottom:8px">Заказов пока нет</h3>
+    <p class="sm mut" style="margin:0">Заказ — это то, что продано клиенту. Соберите его из изделий, выберите налог, и он попадёт в итог за месяц.</p></div>`;
+}
+function newOrder(){
+ if(!S.recipes.length)return toast('Сначала создайте хотя бы одно изделие');
+ const o={id:'o'+Date.now(),d:Date.now(),n:'',items:[],tax:'none'};
+ orders().unshift(o);save();openOrder(o.id)}
+function ORD(id){return orders().find(o=>o.id===id)}
+let ordId=null;
+function openOrder(id){ordId=id;stack=[orderView];paint()}
+function ordSet(k,v){const o=ORD(ordId);if(!o)return;o[k]=v;save();paint()}
+function ordDel(){
+ const o=ORD(ordId);if(!o)return;
+ if(!confirm('Удалить заказ «'+(o.n||'без названия')+'»?'))return;
+ S.orders=orders().filter(x=>x.id!==ordId);save();closeAll();toast('Заказ удалён')}
+function ordAddItems(){
+ const o=ORD(ordId);if(!o)return;
+ pickRecipes('Что в заказе','Отметьте изделия — количество укажете следом',ids=>{
+  if(!ids||!ids.length)return;
+  for(const rid of ids){
+   const r=REC(rid);if(!r)continue;
+   const есть=o.items.find(x=>x.rid===rid);
+   if(есть){есть.q=(+есть.q||0)+1;continue}
+   const {cost}=calc(r);
+   o.items.push({rid,n:r.n,q:1,price:priceOf(r,cost)});
+  }
+  save();paint();toast('Добавлено позиций: '+ids.length)})}
+function ordItemQty(rid,v){
+ const o=ORD(ordId);if(!o)return;
+ const it=o.items.find(x=>x.rid===rid);if(!it)return;
+ it.q=Math.max(0,parseFloat(v)||0);save();paint()}
+function ordItemPrice(rid,v){
+ const o=ORD(ordId);if(!o)return;
+ const it=o.items.find(x=>x.rid===rid);if(!it)return;
+ it.price=Math.max(0,parseFloat(v)||0);save();paint()}
+function ordItemDel(rid){
+ const o=ORD(ordId);if(!o)return;
+ o.items=o.items.filter(x=>x.rid!==rid);save();paint()}
+function ordAddPack(){
+ const o=ORD(ordId);if(!o)return;
+ o.pack=o.pack||[];
+ pickMany('Упаковка заказа','все',ids=>{
+  if(!ids||!ids.length)return;
+  for(const mid of ids){
+   const m=MAT(mid);if(!m)continue;
+   const есть=o.pack.find(x=>x.mid===mid);
+   if(есть){есть.q=(+есть.q||0)+1;continue}
+   /* Подставляем закупочную цену — сколько брать с клиента, владелец решает сама. */
+   o.pack.push({mid,n:m.n,u:baseOf(m),q:1,price:rnd(matPrice(m),2)});
+  }
+  save();paint();toast('Добавлено позиций: '+ids.length)},
+  {groups:[...PACK_G], hint:'Коробки, наполнители, открытки, ленты — отметьте всё, что кладёте в заказ',
+   btn:'Добавить в упаковку'})}
+function ordPackQty(mid,v){
+ const o=ORD(ordId);if(!o)return;
+ const it=(o.pack||[]).find(x=>x.mid===mid);if(!it)return;
+ it.q=Math.max(0,parseFloat(v)||0);save();paint()}
+function ordPackPrice(mid,v){
+ const o=ORD(ordId);if(!o)return;
+ const it=(o.pack||[]).find(x=>x.mid===mid);if(!it)return;
+ it.price=Math.max(0,parseFloat(v)||0);save();paint()}
+function ordPackDel(mid){
+ const o=ORD(ordId);if(!o)return;
+ o.pack=(o.pack||[]).filter(x=>x.mid!==mid);save();paint()}
+
+function ordRefreshPrices(){
+ const o=ORD(ordId);if(!o)return;
+ if(!confirm('Подставить в заказ нынешние цены изделий?\n\nЦены, записанные при создании заказа, будут заменены.'))return;
+ let n=0;
+ for(const it of o.items){const r=REC(it.rid);if(!r)continue;
+  const p=priceOf(r,calc(r).cost); if(Math.abs(p-it.price)>0.005){it.price=p;n++}}
+ for(const it of (o.pack||[])){const m=MAT(it.mid);if(!m)continue;
+  const p=rnd(matPrice(m),2); if(Math.abs(p-it.price)>0.005){it.price=p;n++}}
+ save();paint();toast(n?'Обновлено цен: '+n:'Цены и так актуальные')}
+function orderView(){
+ const o=ORD(ordId);
+ if(!o)return head('Заказ')+'<div class="wrap"><div class="empty">Заказ не найден</div></div>';
+ const s=orderSum(o), налог=orderTax(o), нетто=orderNet(o);
+ const дата=new Date(o.d-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+ return head(o.n||'Новый заказ','Заказ')+`<div class="wrap" style="padding-top:12px">
+ <div class="kpi" style="margin-bottom:12px">
+  <div><div class="l">Стоимость заказа</div><div class="v num">${fmt(s,0)} ₽</div>
+   <div class="xs mut">${orderPackSum(o)?'изделия '+fmt(orderItemsSum(o),0)+' + упаковка '+fmt(orderPackSum(o),0):'изделия'}</div></div>
+  <div><div class="l">Налог</div><div class="v num" style="color:var(--warn)">${fmt(налог,0)} ₽</div>
+   <div class="xs mut">${taxPct(o.tax)?taxPct(o.tax)+' %':'не начисляется'}</div></div>
+  <div><div class="l">К получению</div><div class="v num" style="color:var(--ok)">${fmt(нетто,0)} ₽</div></div>
+ </div>
+ <div class="card">
+  <label class="f"><span>Название или клиент</span>
+   <input value="${esc(o.n||'')}" placeholder="Например: Иванова, подарочный набор" onchange="ordSet('n',this.value.trim())"></label>
+  <div class="grid2">
+   <label class="f"><span>Дата</span>
+    <input type="date" value="${дата}" onchange="ordSet('d',this.value?new Date(this.value+'T12:00:00').getTime():Date.now())"></label>
+   <label class="f"><span>Налог</span>
+    <select onchange="ordSet('tax',this.value)">
+     ${Object.keys(TAXES).map(k=>`<option value="${k}" ${o.tax===k?'selected':''}>${esc(TAXES[k].n)}</option>`).join('')}
+    </select></label>
+  </div>
+  <p class="xs mut" style="margin:-4px 0 0">Налог считается от стоимости заказа вместе с упаковкой: ${fmt(s,2)} ₽ × ${taxPct(o.tax)} % = ${fmt(налог,2)} ₽.</p>
+ </div>
+ <div class="card">
+  <div class="row" style="margin-bottom:10px"><h3 class="sm">Что в заказе</h3><span class="sp"></span>
+   <b class="num sm">${fmt(s,2)} ₽</b></div>
+  ${(o.items||[]).length?o.items.map(it=>{const r=REC(it.rid);
+   return `<div class="lrow"><div style="flex:1;min-width:0">
+    <div class="n2">${esc(it.n||(r?r.n:'изделие удалено'))}</div>
+    <div class="s2">${fmt((+it.price||0)*(+it.q||0),2)} ₽</div>
+    <div class="row" style="gap:8px;margin-top:6px">
+     <input class="mini" style="width:64px" type="number" step="any" min="0" value="${it.q}" onchange="ordItemQty(${jq(it.rid)},this.value)">
+     <span class="xs mut">шт ×</span>
+     <input class="mini" style="width:88px" type="number" step="any" min="0" value="${it.price}" onchange="ordItemPrice(${jq(it.rid)},this.value)">
+     <span class="xs mut">₽</span><span class="sp"></span>
+     <a class="xs" style="color:var(--bad)" onclick="ordItemDel(${jq(it.rid)})">убрать</a></div>
+   </div></div>`}).join('')
+   :'<div class="sm mut" style="padding:8px 0">Пока пусто — добавьте изделия.</div>'}
+  <button class="btn g sm2 full" style="margin-top:10px" onclick="ordAddItems()">+ добавить изделия</button>
+  ${(o.items||[]).length?`<p class="xs mut" style="margin:10px 0 0">Цены записаны на момент добавления и сами не меняются — в заказе должно остаться то, по чему продали.
+   <a href="#" onclick="ordRefreshPrices();return false">Подставить нынешние</a>.</p>`:''}
+ </div>
+ <div class="card">
+  <div class="row" style="margin-bottom:10px"><span class="dot" style="background:${col('pack')}"></span>
+   <h3 class="sm">Упаковка заказа</h3><span class="sp"></span>
+   <b class="num sm">${fmt(orderPackSum(o),2)} ₽</b></div>
+  ${(o.pack||[]).length?o.pack.map(it=>`<div class="lrow"><div style="flex:1;min-width:0">
+    <div class="n2">${esc(it.n)}</div>
+    <div class="s2">${fmt((+it.price||0)*(+it.q||0),2)} ₽</div>
+    <div class="row" style="gap:8px;margin-top:6px">
+     <input class="mini" style="width:64px" type="number" step="any" min="0" value="${it.q}" onchange="ordPackQty(${jq(it.mid)},this.value)">
+     <span class="xs mut">${esc(it.u||'шт')} ×</span>
+     <input class="mini" style="width:88px" type="number" step="any" min="0" value="${it.price}" onchange="ordPackPrice(${jq(it.mid)},this.value)">
+     <span class="xs mut">₽</span><span class="sp"></span>
+     <a class="xs" style="color:var(--bad)" onclick="ordPackDel(${jq(it.mid)})">убрать</a></div>
+   </div></div>`).join('')
+   :'<div class="sm mut" style="padding:8px 0">Коробки, наполнители, открытки, ленты — пока ничего не добавлено.</div>'}
+  <button class="btn g sm2 full" style="margin-top:10px" onclick="ordAddPack()">+ добавить упаковку</button>
+  ${(o.pack||[]).length?`<p class="xs mut" style="margin:10px 0 0">Подставлена закупочная цена — поправьте на ту, по которой берёте с клиента.
+   Упаковка входит в стоимость заказа, значит и в налог.</p>`:''}
+ </div>
+ <div class="card"><button class="btn d full" onclick="ordDel()">Удалить заказ</button></div>
+ <div style="height:8px"></div></div>`}
+
+/* список изделий с галочками — как pickMany, но по изделиям, а не материалам */
+let pickRec=null;
+function pickRecipes(title,hint,cb){
+ pickRec={q:'',cat:'все',sel:[],hint};window.__pickRec=cb;push(pickRecView.bind(null,title))}
+function pickRecToggle(id){const s=pickRec.sel,i=s.indexOf(id);if(i<0)s.push(id);else s.splice(i,1);paint()}
+function pickRecDone(){const s=pickRec.sel.slice(),cb=window.__pickRec;back();if(cb)cb(s)}
+function pickRecView(title){
+ const cats=['все',...allCats()];
+ const q=pickRec.q.toLowerCase();
+ const rows=S.recipes.filter(r=>(pickRec.cat==='все'||r.c===pickRec.cat)&&String(r.n).toLowerCase().includes(q)).sort(byName);
+ const sel=pickRec.sel;
+ return head(title,pickRec.hint||'')+`<div class="wrap" style="padding-top:12px">
+ <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+ <input id="pr-q" placeholder="Начните вводить название" value="${esc(pickRec.q)}" oninput="pickRec.q=this.value;paint();setTimeout(()=>{const e=document.getElementById('pr-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)},0)"></div>
+ <div class="chips">${cats.map(c=>`<div class="chip ${c===pickRec.cat?'on':''}" onclick="pickRec.cat=${jq(c)};paint()">${c==='все'?'все категории':esc(c)}</div>`).join('')}</div>
+ <div class="row xs" style="margin-bottom:8px"><span class="mut">${sel.length?'Отмечено: '+sel.length:'Пока ничего не отмечено'}</span>
+  <span class="sp"></span>${sel.length?`<a style="color:var(--bad)" onclick="pickRec.sel=[];paint()">очистить</a>`:''}</div>
+ <div class="list" style="padding-bottom:64px">${rows.map(r=>{const on=sel.includes(r.id);const p=priceOf(r,calc(r).cost);
+  return `<div class="item ${on?'on':''}" onclick="pickRecToggle(${jq(r.id)})"><div class="row">
+   <span class="ck ${on?'on':''}">${on?'✓':''}</span>
+   <div style="flex:1;min-width:0"><div class="t">${esc(r.n)}</div><div class="xs mut">${esc(r.c||'')}</div></div>
+   <b class="num sm">${fmt(p,0)} ₽</b></div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
+ <div class="pickbar"><button class="btn full" ${sel.length?'':'disabled'} onclick="pickRecDone()">Добавить в заказ${sel.length?' ('+sel.length+')':''}</button></div>
+ </div>`}
 
 /* ============ РАЗДЕЛЫ СПРАВОЧНИКА ============ */
 function openGroups(){push(groupsView)}
@@ -1853,6 +2117,7 @@ function render(){
  if(tab_==='prod')renderProd();
  if(tab_==='stock')renderStock();
  if(tab_==='make')renderMake();
+ if(tab_==='orders')renderOrders();
  if(tab_==='more'){renderMore();renderCloudCard()}
 }
 S=load();

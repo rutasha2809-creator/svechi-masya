@@ -72,6 +72,8 @@ cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stop
   Object.defineProperty(out,'Did',{get:function(){return Did},set:function(v){Did=v},configurable:true});
   Object.defineProperty(out,'tab_',{get:function(){return tab_},set:function(v){tab_=v},configurable:true});
   Object.defineProperty(out,'pickState',{get:function(){return pickState},set:function(v){pickState=v},configurable:true});
+  Object.defineProperty(out,'pickRec',{get:function(){return pickRec},set:function(v){pickRec=v},configurable:true});
+  Object.defineProperty(out,'ordId',{get:function(){return ordId},set:function(v){ordId=v},configurable:true});
 })();`;
 
   // --- заглушки браузера: ровно столько, сколько нужно расчётам ---
