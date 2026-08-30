@@ -940,19 +940,20 @@ function recipeView(){
  <div style="height:8px"></div></div>`;
 }
 function blockHtml(k,arr,s,hid){
- const addable=k!=='other', open=showEmpty[k];
+ /* Кнопки «добавить» нет только в упаковке: в изделие её больше не кладут. */
+ const addable=k==='mat', open=showEmpty[k];
  return `<div class="card"><div class="row" style="margin-bottom:4px">
   <span class="dot" style="background:${col(k)}"></span><h3 class="sm">${CG[k].n}</h3><span class="sp"></span><b class="num sm">${fmt(s,2)} ₽</b></div>
   ${arr.length?arr.map(x=>lineHtml(x)).join(''):'<div class="sm mut" style="padding:8px 0">Ничего не добавлено</div>'}
   ${open&&hid.length?`<div class="hsep"></div><div class="xs mut" style="padding:4px 0">Свободные слоты — нажмите, чтобы заполнить</div>${hid.map(x=>lineHtml(x)).join('')}`:''}
   ${hid&&hid.length?`<a class="xs" style="display:inline-block;margin-top:8px" onclick="showEmpty['${k}']=${!open};paint()">${open?'скрыть свободные слоты':'показать свободные слоты ('+hid.length+')'}</a>`:''}
-  ${addable?`<button class="btn g sm2 full" style="margin-top:8px" onclick="addLine('${k}')">+ добавить ${k==='pack'?'упаковку':'материал'}</button>`:
-   `<div class="grid3" style="margin-top:8px">
+  ${addable?`<button class="btn g sm2 full" style="margin-top:8px" onclick="addLine('mat')">+ добавить материал</button>`
+   :k==='other'?`<div class="grid3" style="margin-top:8px">
      <button class="btn g sm2" onclick="addOther('e')">+ электроэнергия</button>
      <button class="btn g sm2" onclick="addOther('t')">+ амортизация</button>
      <button class="btn g sm2" onclick="addOther('k')">+ процент сверху</button>
     </div>
-    <p class="xs mut" style="margin:8px 0 0">Тариф за кВт·ч общий для всех изделий — в разделе «Ещё».</p>`}</div>`}
+    <p class="xs mut" style="margin:8px 0 0">Тариф за кВт·ч общий для всех изделий — в разделе «Ещё».</p>`:''}</div>`}
 function lineHtml(x){
  const act = x.k==='m'?`editLine(${x.row})`:(['e','t','k'].includes(x.k)?`editOther('${x.k}',${x.row})`:'');
  return `<div class="lrow"><div ${act?`onclick="${act}" style="cursor:pointer"`:''}>
@@ -966,26 +967,26 @@ function dupRecipe(){const c=JSON.parse(JSON.stringify(D));c.id='r'+Date.now();c
 function resetRecipe(){if(!confirm('Вернуть состав, как он был в Excel? Все ваши правки этого изделия пропадут.'))return;
  D=JSON.parse(JSON.stringify(seedOf(Did)));saveDraft();toast('Возвращён исходный состав')}
 function delRecipe(){if(!confirm('Удалить изделие «'+D.n+'»?'))return;S.recipes=S.recipes.filter(x=>x.id!==Did);save();closeAll();toast('Удалено')}
+/* В изделие добавляются только материалы. Упаковки в этом списке нет: её
+   стоимость заложена в наценку вместе с общепроизводственными расходами,
+   а коробки, ленты и открытки выбираются один раз на весь заказ. */
 function addLine(k){
- /* Открываем список с галочками: обычно в изделие нужна не одна позиция,
-    а сразу несколько — коробка и наполнитель, воск и отдушка, и так далее. */
- const упак = k==='pack';
- pickMany(упак?'Упаковка изделия':'Материалы изделия', упак?'box':'все', ids=>{
+ const noPack=groupKeys().filter(g=>!PACK_G.has(g));
+ pickMany('Материалы изделия','все', ids=>{
   if(!ids||!ids.length)return;
   let row=Math.max(0,...D.l.map(l=>l.r));
   let первая=null;
   for(const id of ids){
    const m=MAT(id); if(!m)continue;
    row++;
-   D.l.push({r:row, lb:упак?'упаковка':'материал', g:m.g, m:id,
+   D.l.push({r:row, lb:'материал', g:m.g, m:id,
              q:{type:'const',value:1}, fp:0, cf:'mul'});
    if(первая==null)первая=row;
   }
   save();
   if(ids.length===1&&первая!=null){editLine(первая);toast('Добавлено — укажите количество')}
   else {paint();toast('Добавлено позиций: '+ids.length+' — укажите количество в каждой')}
- },{hint:упак?'Коробки, ленты, наклейки, тишью — отметьте всё, что кладёте в изделие'
-              :'Отметьте все материалы сразу — количество укажете потом',
+ },{groups:noPack, hint:'Отметьте все материалы сразу — количество укажете потом',
     btn:'Добавить в изделие'});
 }
 let lotOpen=null;
@@ -1518,10 +1519,9 @@ function shipDo(строки,подпись,extra){
   for(const y of c.det){ if(y.k!=='k')continue;
    const k=mkAccOf(r,y.row); if(k)acc[k]+=(+y.c||0)*n }
  }
- for(const x of строки){
-  if(!x.mid)continue;
-  const m=MAT(x.mid); if(m)cost+=matPrice(m)*(+x.q||0);
- }
+ /* Отдельные материалы строки (упаковка заказа) в себестоимость не идут:
+    их стоимость уже сидит в общепроизводственных затратах. Со склада они
+    списываются — это делает need[] выше. */
  const use=[];
  for(const id in need){
   const m=MAT(id); if(!m||!need[id])continue;
@@ -1785,11 +1785,12 @@ function orderPackSum(o){return rnd((o.pack||[]).reduce((a,x)=>{const m=MAT(x.mi
    затрат, поэтому к цене заказа она НЕ прибавляется — иначе задвоение.
    Коробки, ленты и открытки в заказе нужны только для списания со склада. */
 function orderSum(o){return o&&o.own?0:orderItemsSum(o)}
-/* Себестоимость заказа: изделия по составу + упаковка по закупочной цене. */
+/* Себестоимость заказа — только изделия по их составу.
+   Упаковка сюда не прибавляется: она сидит в общепроизводственных затратах,
+   а в заказе указывается лишь как материал для списания со склада. */
 function orderCost(o){
  let c=0;
  for(const x of (o.items||[])){const r=REC(x.rid); if(r)c+=calc(r).cost*(+x.q||0)}
- for(const x of (o.pack||[])){const m=MAT(x.mid); if(m)c+=matPrice(m)*(+x.q||0)}
  return rnd(c,2);
 }
 /* Строки для списания: изделия и упаковка заказа. */
