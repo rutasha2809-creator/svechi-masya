@@ -374,7 +374,7 @@ function costBase(){return 'lot'}
 function calc(r,mode){
   mode = (mode==='avg'||mode==='lot') ? mode : costBase();
   const p=r.p||{}, d=derive(r), rowcost={}, qtys={}, det=[];
-  let total=0;
+  let total=0, упаковка=0;
   for(const l of r.l){
     const m=MAT(l.m);
     let up = m
@@ -401,6 +401,8 @@ function calc(r,mode){
     qtys[l.r]=v;
     const c = l.cf==='round' ? rnd(v*up,1) : v*up;
     rowcost[l.r]=c; total+=c;
+    const гр = l.g || (m?m.g:null);
+    if(PACK_G.has(гр)) упаковка+=c;   // войдёт в себестоимость, но не в базу процентов
     det.push({k:'m',lb:l.lb,name:m?m.n:(l.material||'—'),unit:m?m.u:'',q:v,up,c,row:l.r,mid:l.m,g:l.g});
   }
   for(const e of r.en||[]){
@@ -416,8 +418,12 @@ function calc(r,mode){
   /* Косвенные расходы. Начисляются двумя общими строками — без разбивки по
      составу — от суммы прямых затрат: материалы + электроэнергия + амортизация.
      Ставки общие для всех изделий, лежат в настройках. Своих процентных строк
-     у изделия больше нет: старые (r.mk) в расчёте не участвуют. */
-  const прямые=total;
+     у изделия больше нет: старые (r.mk) в расчёте не участвуют.
+
+     Упаковка из базы процентов исключена (решение владельца 30.08.2026):
+     её стоимость и так сидит в общепроизводственных расходах, начислять
+     на неё ещё 10 % + 2 % — задвоение. В себестоимость она входит полностью. */
+  const прямые=total-упаковка;
   for(const kind of ['opr','ohr']){
     const pct=accPct(kind);
     const val=прямые*pct/100;
@@ -426,7 +432,7 @@ function calc(r,mode){
       name:qfmt(pct)+' % от прямых '+fmt(прямые,2)+' ₽',q:null,up:null,c:val,row:kind==='opr'?-7:-8});
   }
   if(r.ex){ total+=+r.ex; det.push({k:'x',lb:'доп. расходы',name:'',q:null,up:null,c:+r.ex,row:-9}); }
-  return {cost:total, det, d, прямые};
+  return {cost:total, det, d, прямые, упаковка};
 }
 // обе себестоимости рядом: по конкретной партии и по средневзвешенной за месяц
 function costs(r){
@@ -908,11 +914,21 @@ function pickMaterial(title,group,cb){
 function pickMany(title,group,cb,opt){
  pickState={cb,group:group||'все',q:'',multi:true,sel:[],opt:opt||{}};
  window.__pickMany=cb;push(pickRender.bind(null,title))}
+/* opt.blocked — позиции, которые выбирать нельзя: например упаковка,
+   уже входящая в состав изделий заказа. Иначе списалась бы дважды. */
+function pickBlocked(id){
+ const b=(pickState.opt||{}).blocked;
+ if(!b)return null;
+ const x=b.find(z=>z.id===id);
+ return x?(x.why||'уже есть'):null;
+}
 function pickToggle(id){
+ if(pickBlocked(id))return;
  const s=pickState.sel, i=s.indexOf(id);
  if(i<0)s.push(id); else s.splice(i,1);
  paint()}
 function pickAllShown(ids){
+ ids=ids.filter(id=>!pickBlocked(id));
  const s=pickState.sel;
  const все=ids.every(id=>s.includes(id));
  pickState.sel = все ? s.filter(id=>!ids.includes(id)) : [...new Set([...s,...ids])];
@@ -936,7 +952,7 @@ function pickRender(title){
  const total=rows.length; rows=rows.slice(0,80);
  const M=!!pickState.multi, O=pickState.opt||{}, sel=pickState.sel||[];
  const выбраны=sel.map(id=>MAT(id)).filter(Boolean);
- const видимые=rows.map(m=>m.id);
+ const видимые=rows.map(m=>m.id).filter(id=>!pickBlocked(id));
  const всеОтмечены=видимые.length&&видимые.every(id=>sel.includes(id));
  return head(title,M?(O.hint||'Отметьте всё, что нужно — добавится сразу'):'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -949,11 +965,12 @@ function pickRender(title){
   </div>`:''}
  ${M&&выбраны.length?`<div class="chips" style="margin-bottom:10px">${выбраны.map(m=>`<div class="chip on" onclick="pickToggle(${jq(m.id)})">${esc(m.n)} ×</div>`).join('')}</div>`:''}
  <div class="list" ${M?'style="padding-bottom:64px"':''}>${rows.map(m=>{const on=M&&sel.includes(m.id);
-  return `<div class="item ${on?'on':''}" onclick="${M?`pickToggle(${jq(m.id)})`:`__pick(${jq(m.id)});back()`}">
+  const нельзя=pickBlocked(m.id);
+  return `<div class="item ${on?'on':''}" ${нельзя?'style="opacity:.5"':`onclick="${M?`pickToggle(${jq(m.id)})`:`__pick(${jq(m.id)});back()`}"`}>
    <div class="row">${M?`<span class="ckb ${on?'on':''}">${on?'✓':''}</span>`:''}
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
-   <div class="xs mut">${esc(groupName(m.g))} · ${fmt(m.p,m.p<1?3:2)} ₽/${esc(m.u)}</div></div>
-   ${(+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:''}</div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
+   <div class="xs mut">${нельзя?esc(нельзя):esc(groupName(m.g))+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u)}</div></div>
+   ${нельзя?'<span class="tag">уже в изделии</span>':((+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:'')}</div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
  ${total>80?`<p class="xs mut" style="text-align:center;margin-top:10px">Показано 80 из ${total} — уточните поиск</p>`:''}
  ${M?`<div class="pickbar"><button class="btn full" ${выбраны.length?'':'disabled'} onclick="pickDone()">${esc(O.btn||'Добавить в изделие')}${выбраны.length?' ('+выбраны.length+')':''}</button></div>`
  :`<button class="btn g full" style="margin-top:12px" onclick="__pick(null);back()">Убрать материал из строки</button>`}</div>`}
@@ -1049,7 +1066,7 @@ function recipeView(){
   <div class="stack">${bar}</div>
   <div style="margin-top:10px">${legend}</div>
  </div>
- ${['mat','pack','other'].filter(k=>k!=='pack'||buck.pack.length).map(k=>blockHtml(k,buck[k],sum(k),hid[k])).join('')}
+ ${['mat','pack','other'].map(k=>blockHtml(k,buck[k],sum(k),hid[k])).join('')}
  ${params.length?`<div class="card"><h3 class="sm" style="margin-bottom:10px">Параметры расчёта</h3>
    <div class="grid2">${params.map(k=>`<label class="f"><span>${esc(PKEY[k]||k)}</span>
    <input type="number" step="any" value="${r.p[k]??''}" onchange="D.p['${k}']=parseFloat(this.value)||0;paint()"></label>`).join('')}</div>
@@ -1070,15 +1087,13 @@ function recipeView(){
  <div style="height:8px"></div></div>`;
 }
 function blockHtml(k,arr,s,hid){
- /* Кнопки «добавить» нет только в упаковке: в изделие её больше не кладут. */
- const addable=k==='mat', open=showEmpty[k];
+ const addable=(k==='mat'||k==='pack'), open=showEmpty[k];
  return `<div class="card"><div class="row" style="margin-bottom:4px">
   <span class="dot" style="background:${col(k)}"></span><h3 class="sm">${CG[k].n}</h3><span class="sp"></span><b class="num sm">${fmt(s,2)} ₽</b></div>
   ${arr.length?arr.map(x=>lineHtml(x)).join(''):'<div class="sm mut" style="padding:8px 0">Ничего не добавлено</div>'}
   ${open&&hid.length?`<div class="hsep"></div><div class="xs mut" style="padding:4px 0">Свободные слоты — нажмите, чтобы заполнить</div>${hid.map(x=>lineHtml(x)).join('')}`:''}
   ${hid&&hid.length?`<a class="xs" style="display:inline-block;margin-top:8px" onclick="showEmpty['${k}']=${!open};paint()">${open?'скрыть свободные слоты':'показать свободные слоты ('+hid.length+')'}</a>`:''}
-  ${k==='pack'&&arr.length?`<button class="btn d sm2 full" style="margin-top:8px" onclick="delPackLines()">Удалить все строки упаковки</button>`:''}
-  ${addable?`<button class="btn g sm2 full" style="margin-top:8px" onclick="addLine('mat')">+ добавить материал</button>`
+  ${addable?`<button class="btn g sm2 full" style="margin-top:8px" onclick="addLine('${k}')">${k==='pack'?'+ добавить упаковку':'+ добавить материал'}</button>`
    :k==='other'?`<div class="grid2" style="margin-top:8px">
      <button class="btn g sm2" onclick="addOther('e')">+ электроэнергия</button>
      <button class="btn g sm2" onclick="addOther('t')">+ амортизация</button>
@@ -1091,39 +1106,36 @@ function lineHtml(x){
   <div class="s2">${esc(x.name||'—')}${x.q!=null?` · ${qfmt(x.q)} ${esc(x.unit||'')}`:''}</div></div>
   <div style="text-align:right">${x.up!=null&&x.mid?`<a class="prc num" onclick="event.stopPropagation();editPrice(${jq(x.mid)})">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</a>`:''}
   <div class="c2">${x.c?fmt(x.c,2)+' ₽':'—'}</div></div></div>`}
-/* Упаковка в изделие больше не входит: строки старых изделий убираются одной кнопкой. */
-function delPackLines(){
- if(!confirm('Убрать из изделия все строки упаковки? Коробки, ленты и открытки выбираются в заказе.'))return;
- D.l=(D.l||[]).filter(x=>{const m=x.m?MAT(x.m):null; const g=x.g||(m?m.g:null); return !PACK_G.has(g)});
- const i=S.recipes.findIndex(x=>x.id===Did);
- if(i>=0){S.recipes[i]=JSON.parse(JSON.stringify(D));save()}
- toast('Упаковка убрана из изделия');paint()}
 function saveDraft(){const i=S.recipes.findIndex(x=>x.id===Did);S.recipes[i]=JSON.parse(JSON.stringify(D));save();toast('Сохранено');paint()}
 function dupRecipe(){const c=JSON.parse(JSON.stringify(D));c.id='r'+Date.now();c.n=D.n+' (копия)';delete c.xl;
  S.recipes.push(c);save();toast('Копия создана');openRecipe(c.id)}
 function resetRecipe(){if(!confirm('Вернуть состав, как он был в Excel? Все ваши правки этого изделия пропадут.'))return;
  D=JSON.parse(JSON.stringify(seedOf(Did)));saveDraft();toast('Возвращён исходный состав')}
 function delRecipe(){if(!confirm('Удалить изделие «'+D.n+'»?'))return;S.recipes=S.recipes.filter(x=>x.id!==Did);save();cloudFlush();closeAll();toast('Удалено')}
-/* В изделие добавляются только материалы. Упаковки в этом списке нет: её
-   стоимость заложена в наценку вместе с общепроизводственными расходами,
-   а коробки, ленты и открытки выбираются один раз на весь заказ. */
+/* Два списка: материалы изделия и упаковка. В списке материалов разделов
+   упаковки нет, в списке упаковки — только они. Упаковку можно завести и
+   в изделии, и в заказе; перед списанием приложение предупредит, если одна
+   и та же позиция стоит в обоих местах. */
 function addLine(k){
- const noPack=groupKeys().filter(g=>!PACK_G.has(g));
- pickMany('Материалы изделия','все', ids=>{
+ const упак = k==='pack';
+ const группы = упак ? groupKeys().filter(g=>PACK_G.has(g))
+                     : groupKeys().filter(g=>!PACK_G.has(g));
+ pickMany(упак?'Упаковка изделия':'Материалы изделия','все', ids=>{
   if(!ids||!ids.length)return;
   let row=Math.max(0,...D.l.map(l=>l.r));
   let первая=null;
   for(const id of ids){
    const m=MAT(id); if(!m)continue;
    row++;
-   D.l.push({r:row, lb:'материал', g:m.g, m:id,
+   D.l.push({r:row, lb:упак?'упаковка':'материал', g:m.g, m:id,
              q:{type:'const',value:1}, fp:0, cf:'mul'});
    if(первая==null)первая=row;
   }
   save();
   if(ids.length===1&&первая!=null){editLine(первая);toast('Добавлено — укажите количество')}
   else {paint();toast('Добавлено позиций: '+ids.length+' — укажите количество в каждой')}
- },{groups:noPack, hint:'Отметьте все материалы сразу — количество укажете потом',
+ },{groups:группы, hint:упак?'Коробки, ленты, открытки — отметьте всё, что идёт с изделием'
+                          :'Отметьте все материалы сразу — количество укажете потом',
     btn:'Добавить в изделие'});
 }
 function editLine(row){push(lineView.bind(null,row))}
@@ -2003,16 +2015,36 @@ function ordItemPrice(rid,v){
 function ordItemDel(rid){
  const o=ORD(ordId);if(!o)return;
  o.items=o.items.filter(x=>x.rid!==rid);save();paint()}
+/* Одна и та же позиция может стоять и в составе изделия, и в упаковке заказа.
+   Тогда со склада она уйдёт дважды. Молча не исправляем — предупреждаем. */
+function packDouble(o){
+ if(!o)return [];
+ const вЗаказе=new Set((o.pack||[]).map(x=>x.mid).filter(Boolean));
+ if(!вЗаказе.size)return [];
+ const имена=new Set();
+ for(const it of (o.items||[])){
+  const r=REC(it.rid); if(!r)continue;
+  for(const l of (r.l||[])){
+   if(!l.m||!вЗаказе.has(l.m))continue;
+   const m=MAT(l.m);
+   имена.add((m?m.n:l.m)+' — в изделии «'+r.n+'» и в упаковке заказа');
+  }
+ }
+ return [...имена];
+}
 function ordShip(){
  const o=ORD(ordId); if(!o)return;
  if(orderShipped(o))return toast('Материалы по этому заказу уже списаны');
  const строки=orderLines(o);
  if(!строки.length)return toast('Сначала добавьте изделия или упаковку');
  const c=shipCheck(строки);
+ const двойные=packDouble(o);
+ const задвоение=двойные.length?'\n\nВнимание, спишется дважды:\n'+двойные.slice(0,5).join('\n')+
+   (двойные.length>5?'\nи ещё '+(двойные.length-5):''):'';
  const предупреждение=c.ok?'':'\n\nМатериалов не хватает: '+
    c.мало.slice(0,5).map(x=>x.m.n+' — надо '+qfmt(x.надо)+', есть '+qfmt(x.есть)).join('; ')+
    (c.мало.length>5?' и ещё '+(c.мало.length-5):'')+'\nСписать всё равно можно, но остаток уйдёт в минус.';
- if(!confirm('Списать материалы по заказу «'+(o.n||'без названия')+'»?\n\nПозиций со склада: '+c.позиций+предупреждение))return;
+ if(!confirm('Списать материалы по заказу «'+(o.n||'без названия')+'»?\n\nПозиций со склада: '+c.позиций+задвоение+предупреждение))return;
  const подпись=(o.own?'Для своих: ':'Заказ: ')+(o.n||'без названия');
  const запись=shipDo(строки,подпись,{oid:o.id});
  o.ship={g:запись.g,d:запись.d};
@@ -2024,19 +2056,36 @@ function ordUnship(){
  logUndo(o.ship.g);
  if(!LOG(o.ship.g)){o.ship=null;save();paint()}
 }
+/* Что уже приходит вместе с изделиями заказа — в список упаковки не пускаем. */
+function packInItems(o){
+ const из={};
+ for(const it of ((o&&o.items)||[])){
+  const r=REC(it.rid); if(!r)continue;
+  for(const l of (r.l||[])){
+   if(!l.m)continue;
+   const m=MAT(l.m), г=l.g||(m?m.g:null);
+   if(!PACK_G.has(г))continue;
+   из[l.m]=из[l.m]||{id:l.m,why:'уже в изделии «'+r.n+'»'};
+  }
+ }
+ return Object.values(из);
+}
 function ordAddPack(){
  const o=ORD(ordId);if(!o)return;
  o.pack=o.pack||[];
+ const занято=packInItems(o);
  pickMany('Упаковка заказа','все',ids=>{
   if(!ids||!ids.length)return;
   for(const mid of ids){
    const m=MAT(mid);if(!m)continue;
+   if(занято.some(z=>z.id===mid))continue;
    const есть=o.pack.find(x=>x.mid===mid);
    if(есть){есть.q=(+есть.q||0)+1;continue}
    o.pack.push({mid,n:m.n,u:baseOf(m),q:1});
   }
   save();paint();toast('Добавлено позиций: '+ids.length)},
-  {groups:[...PACK_G], hint:'Коробки, наполнители, открытки, ленты — отметьте всё, что кладёте в заказ',
+  {groups:[...PACK_G], blocked:занято,
+   hint:'Коробки, наполнители, открытки, ленты — отметьте всё, что кладёте в заказ',
    btn:'Добавить в упаковку'})}
 function ordPackQty(mid,v){
  const o=ORD(ordId);if(!o)return;
@@ -2084,6 +2133,7 @@ function orderView(){
      ${!c.ok&&c.мало.length?`<div class="card tight sm warnbox" style="margin-bottom:10px">Не хватает: ${
        c.мало.slice(0,4).map(x=>esc(x.m.n)+' — надо '+qfmt(x.надо)+' '+esc(baseOf(x.m))+', есть '+qfmt(x.есть)).join('; ')
        }${c.мало.length>4?' и ещё '+(c.мало.length-4):''}. Списать всё равно можно, но остаток уйдёт в минус.</div>`:''}
+     ${(()=>{const d=packDouble(o);return d.length?`<div class="card tight sm warnbox" style="margin-bottom:10px">Спишется дважды: ${esc(d.slice(0,3).join('; '))}${d.length>3?' и ещё '+(d.length-3):''}. Уберите лишнее в изделии или в упаковке заказа.</div>`:''})()}
      <button class="btn full" ${c.позиций?'':'disabled'} onclick="ordShip()">Списать материалы со склада${c.позиций?' — позиций: '+c.позиций:''}</button>
      <p class="xs mut" style="margin:10px 0 0">Спишется всё, что нужно на изделия заказа по их составу, и упаковка. Пока не нажали — склад не тронут.</p></div>`})()}
  <div class="card">
