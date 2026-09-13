@@ -1848,24 +1848,32 @@ function accLedger(kind){
  return rows;
 }
 function accAt(kind,ym){const L=accLedger(kind);return L.find(x=>x.ym===ym)||null}
+/* Косвенные расходы в ведомости — ОДНА строка на обе статьи (решение владельца
+   13.09.2026). Пополнение — закупки из всех отмеченных разделов, списание — всё,
+   что начислено на изделия, сальдо одно и переходит на следующий месяц.
+   В расчёте себестоимости и в настройках ставки по-прежнему две. */
+function accBoth(ym){
+ const a=accAt('opr',ym)||{o:0,in:0,out:0,c:0}, b=accAt('ohr',ym)||{o:0,in:0,out:0,c:0};
+ return {o:rnd(a.o+b.o,2), in:rnd(a.in+b.in,2), out:rnd(a.out+b.out,2), c:rnd(a.c+b.c,2)};
+}
 /* были ли выпуски без разбивки — по ним ведомость неполна */
 function accNoBreak(ym){
  return (S.log||[]).filter(e=>e.t==='make'&&ymOf(e.d)===ym&&!e.acc).length;
 }
 function accHtml(ym){
- const строки=Object.keys(ACC).map(k=>{
-  const x=accAt(k,ym)||{o:0,in:0,out:0,c:0};
-  return `<tr><td><div class="b">${ACC[k].n}</div><div class="xs mut">${ACC[k].d}</div></td>
+ const x=accBoth(ym);
+ const строки=`<tr><td><div class="b">Косвенные расходы</div>
+   <div class="xs mut">общепроизводственные и общехозяйственные вместе</div></td>
    <td class="num">${x.o?fmt(x.o,2):'—'}</td>
    <td class="num" ${x.in?'style="color:var(--ok)"':''}>${x.in?fmt(x.in,2):'—'}</td>
    <td class="num" ${x.out?'style="color:var(--warn)"':''}>${x.out?fmt(x.out,2):'—'}</td>
-   <td class="num"><b>${x.c?fmt(x.c,2):'—'}</b></td></tr>`}).join('');
- const пусто=Object.keys(ACC).every(k=>{const x=accAt(k,ym);return !x||(!x.o&&!x.in&&!x.out&&!x.c)});
+   <td class="num"><b>${x.c?fmt(x.c,2):'—'}</b></td></tr>`;
+ const пусто=!x.o&&!x.in&&!x.out&&!x.c;
  const без=accNoBreak(ym);
  const нетРазделов=!Object.values(accGroups()).length;
  return `<div class="card" style="margin-top:12px">
   <h3 class="sm" style="margin-bottom:4px">Расходы общей суммой</h3>
-  <p class="xs mut" style="margin:0 0 10px">${esc(ymLabel(ym))}. Пополнение — закупки из разделов, отмеченных как общепроизводственные и общехозяйственные. Списание — то, что начислено на изделия при выпуске.</p>
+  <p class="xs mut" style="margin:0 0 10px">${esc(ymLabel(ym))}. Пополнение — закупки из разделов, отмеченных как общепроизводственные и общехозяйственные. Списание — то, что начислено на изделия при выпуске. Обе статьи идут одной строкой.</p>
   ${пусто?'<div class="sm mut" style="padding:6px 0">За этот месяц движений по этим позициям не было.</div>':`
   <div style="overflow-x:auto"><table class="tt"><thead><tr>
     <th>Статья</th><th>На начало</th><th>Пополнение</th><th>Списание</th><th>На конец</th></tr></thead>
@@ -2215,12 +2223,11 @@ function pickRecView(title){
 
 /* Свод за месяц: одной таблицей всё, что посчитано выше. */
 function itogoHtml(ym,tot){
- const opr=accAt('opr',ym)||{o:0,in:0,out:0,c:0};
- const ohr=accAt('ohr',ym)||{o:0,in:0,out:0,c:0};
+ const кос=accBoth(ym);
  const t=taxMonth(ym);
  const строка=(имя,подпись,знач,цвет)=>`<tr><td><div class="b">${имя}</div><div class="xs mut">${подпись}</div></td>
    <td class="num" ${цвет?`style="color:${цвет}"`:''}><b>${fmt(знач,2)}</b></td></tr>`;
- const потрачено=rnd(tot.ws+opr.out+ohr.out,2);
+ const потрачено=rnd(tot.ws+кос.out,2);
  return `<div class="card" style="margin-top:12px">
   <h3 class="sm" style="margin-bottom:4px">ИТОГО за месяц</h3>
   <p class="xs mut" style="margin:0 0 10px">${esc(ymLabel(ym))}</p>
@@ -2229,15 +2236,13 @@ function itogoHtml(ym,tot){
    ${строка('Списано материалов в изделия','по средневзвешенной за месяц',tot.ws,'var(--warn)')}
    ${строка('Остаток на складе','на конец месяца, в деньгах',tot.cs)}
    <tr><td colspan="2" style="height:6px"></td></tr>
-   ${строка('Общепроизводственные: пополнение','закупки из отмеченных разделов',opr.in,'var(--ok)')}
-   ${строка('Общепроизводственные: списание','начислено на изделия',opr.out,'var(--warn)')}
-   ${строка('Общехозяйственные: пополнение','закупки из отмеченных разделов',ohr.in,'var(--ok)')}
-   ${строка('Общехозяйственные: списание','начислено на изделия',ohr.out,'var(--warn)')}
+   ${строка('Косвенные расходы: пополнение','закупки из отмеченных разделов',кос.in,'var(--ok)')}
+   ${строка('Косвенные расходы: списание','начислено на изделия',кос.out,'var(--warn)')}
    <tr><td colspan="2" style="height:6px"></td></tr>
    ${строка('Выручка по заказам','заказов: '+t.заказов,t.выручка,'var(--acc)')}
    ${строка('Налог',t.оплата?'оплачен '+esc(new Date(t.оплата.d).toLocaleDateString('ru-RU')):'не отмечен оплаченным',t.всего,'var(--warn)')}
    <tr class="tot"><td><b>Ушло в производство за месяц</b>
-     <div class="xs mut">материалы + общепроизводственные + общехозяйственные</div></td>
+     <div class="xs mut">материалы + косвенные расходы</div></td>
     <td class="num"><b>${fmt(потрачено,2)}</b></td></tr>
   </tbody></table></div>
  </div>`;
