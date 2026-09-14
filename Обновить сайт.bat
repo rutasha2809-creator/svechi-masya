@@ -8,6 +8,9 @@ echo   https://rutasha2809-creator.github.io/svechi-masya/
 echo ============================================
 
 echo.
+echo VAZHNO: ne klikayte myshyu vnutri etogo okna - cmd zamiraet.
+echo Esli okno zamerlo i v zagolovke poyavilos slovo Vybrat - nazhmite Esc.
+echo.
 echo === Step 0: Check git ===
 where git >nul 2>&1
 if %errorlevel% neq 0 (
