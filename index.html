@@ -28,6 +28,9 @@ header .wrap{display:flex;align-items:center;gap:10px;height:56px}
 .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(150deg,var(--acc),var(--acc2));flex:0 0 auto;
 display:grid;place-items:center;color:#fff;font-size:15px}
 header h1{font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gear{flex:0 0 auto;margin-left:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+ background:var(--soft);border:1px solid var(--line);border-radius:9px;color:var(--mut);cursor:pointer;padding:0}
+.gear svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .pill{font-size:11px;color:var(--mut);background:var(--soft);border:1px solid var(--line);border-radius:99px;padding:3px 9px;white-space:nowrap}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:40;background:color-mix(in srgb,var(--card) 94%,transparent);
 backdrop-filter:blur(14px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
@@ -164,6 +167,8 @@ a{cursor:pointer}
   <div class="logo">✦</div>
   <h1>Prime</h1>
   <span class="pill" id="hpill">—</span>
+  <button class="gear" onclick="openAdmin()" aria-label="Служебное">
+   <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg></button>
 </div></header>
 
 <div id="conflict-bar" style="display:none"><div class="wrap" id="conflict-in"></div></div>
@@ -206,6 +211,19 @@ a{cursor:pointer}
   <div class="list" id="list-ord"></div>
 </section>
 
+<section id="s-rep">
+  <div class="card">
+    <h3 style="margin-bottom:4px">Ведомость по средневзвешенной</h3>
+    <p class="sm mut" style="margin:0 0 12px">Отчёт для бухгалтера: помесячно по каждому материалу — остаток на начало, приход, средняя за месяц, списание и остаток на конец. На себестоимость и цены изделий не влияет: они считаются по цене партии.</p>
+    <button class="btn g full" onclick="openAvg()">Открыть ведомость</button>
+  </div>
+  <div class="card" id="verify-card">
+    <h3 style="margin-bottom:4px">Сверка с Excel</h3>
+    <p class="sm mut" style="margin:0 0 10px">Себестоимость здесь против вашего файла на исходных данных. Расхождения — ошибки формул в Excel, они разобраны в отчёте.</p>
+    <div id="verify"></div>
+  </div>
+</section>
+
 <section id="s-more">
   <div class="card">
     <h3 style="margin-bottom:4px">Как считается цена</h3>
@@ -229,43 +247,12 @@ a{cursor:pointer}
     <button class="btn full" onclick="saveSettings()">Сохранить</button>
   </div>
   <div class="card">
-    <h3 style="margin-bottom:4px">Ведомость по средневзвешенной</h3>
-    <p class="sm mut" style="margin:0 0 12px">Отчёт для бухгалтера: помесячно по каждому материалу — остаток на начало, приход, средняя за месяц, списание и остаток на конец. На себестоимость и цены изделий не влияет: они считаются по цене партии.</p>
-    <button class="btn g full" onclick="openAvg()">Открыть ведомость</button>
-  </div>
-  <div class="card">
-    <h3 style="margin-bottom:8px">Общая база</h3>
-    <div id="cloud-box"></div>
-  </div>
-  <div class="card">
-    <h3 style="margin-bottom:8px">Данные приложения</h3>
-    <div id="data-box"></div>
-  </div>
-  <div class="card">
     <h3 style="margin-bottom:4px">Справочники</h3>
     <p class="sm mut" style="margin:0 0 12px">Категории изделий и разделы, по которым разложены материалы. Можно переименовать, добавить свои и убрать ненужные.</p>
     <div class="grid2">
       <button class="btn g" onclick="openCats()">Категории изделий</button>
       <button class="btn g" onclick="openGroups()">Разделы материалов</button>
     </div>
-  </div>
-  <div class="card">
-    <h3 style="margin-bottom:4px">Резервная копия</h3>
-    <p class="sm mut" style="margin:0 0 12px">База живёт в этом браузере. Скачивайте копию перед крупными правками — её же можно открыть на другом устройстве.</p>
-    <div class="grid2">
-      <button class="btn g" onclick="expJSON()">Скачать базу</button>
-      <button class="btn g" onclick="document.getElementById('imp').click()">Загрузить базу</button>
-    </div>
-    <input type="file" id="imp" accept=".json" style="display:none" onchange="impJSON(this)">
-    <div class="grid2" style="margin-top:10px">
-      <button class="btn g" onclick="expCSV('mat')">Материалы в CSV</button>
-      <button class="btn g" onclick="expCSV('prod')">Изделия в CSV</button>
-    </div>
-  </div>
-  <div class="card" id="verify-card">
-    <h3 style="margin-bottom:4px">Сверка с Excel</h3>
-    <p class="sm mut" style="margin:0 0 10px">Себестоимость здесь против вашего файла на исходных данных. Расхождения — ошибки формул в Excel, они разобраны в отчёте.</p>
-    <div id="verify"></div>
   </div>
   <div class="card">
     <h3 style="margin-bottom:8px">Короткая подсказка</h3>
@@ -285,7 +272,8 @@ a{cursor:pointer}
   <button class="on" data-s="prod" onclick="tab('prod')"><svg viewBox="0 0 24 24"><path d="M12 3c1.6 2 2.5 3.4 2.5 4.8A2.5 2.5 0 0 1 12 10a2.5 2.5 0 0 1-2.5-2.2C9.5 6.4 10.4 5 12 3z"/><rect x="6" y="10" width="12" height="11" rx="2.5"/></svg>Изделия</button>
   <button data-s="stock" onclick="tab('stock')"><svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>Склад</button>
   <button data-s="orders" onclick="tab('orders')"><svg viewBox="0 0 24 24"><path d="M6 4h12l1.5 16H4.5L6 4z"/><path d="M9 8a3 3 0 0 0 6 0"/></svg>Заказы</button>
-  <button data-s="more" onclick="tab('more')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Ещё</button>
+  <button data-s="rep" onclick="tab('rep')"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Отчёты</button>
+  <button data-s="more" onclick="tab('more')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Настройки</button>
 </div></nav>
 
 <div class="sheet" id="sheet" onclick="if(event.target===this)closeAll()"><div id="sheet-in"></div></div>
@@ -297,7 +285,7 @@ const KEY='masya_cost_v1';
 /* opr / ohr — общепроизводственные и общехозяйственные расходы, в процентах.
    Начисляются каждому изделию общей строкой от суммы прямых затрат
    (материалы + электроэнергия + амортизация). Ставки общие для всего
-   приложения и меняются в «Ещё → Настройки». */
+   приложения и меняются в «Настройки → Как считается цена». */
 const DEF_SET={coef:3,round:10,kwt:1.7,low:15,base:'lot',opr:10,ohr:2};
 let S=null, mem=null;
 
@@ -369,7 +357,7 @@ function derive(r){
 /* Себестоимость всегда считается по цене конкретной партии.
    Решение владельца от 31.08.2026: средневзвешенную в ценах не используем.
    Сама она никуда не делась — считается в «Ведомости по средневзвешенной»
-   («Ещё» → «Ведомость»), это отчёт для бухгалтера, на цены он не влияет. */
+   («Отчёты» → «Ведомость»), это отчёт для бухгалтера, на цены он не влияет. */
 function costBase(){return 'lot'}
 function calc(r,mode){
   mode = (mode==='avg'||mode==='lot') ? mode : costBase();
@@ -998,7 +986,7 @@ function renderProd(){
     <b style="color:var(--ink)">4.</b> «Заказы» → соберите заказ и нажмите «Списать материалы со склада».
    </div>
    <div class="hsep"></div>
-   <p class="xs mut" style="margin:0">Хотите посмотреть на готовом примере — «Ещё» → «Загрузить пример из Excel».</p>
+   <p class="xs mut" style="margin:0">Хотите посмотреть на готовом примере — «Настройки» → «Загрузить пример из Excel».</p>
   </div>`;
   return;
  }
@@ -1098,7 +1086,7 @@ function blockHtml(k,arr,s,hid){
      <button class="btn g sm2" onclick="addOther('e')">+ электроэнергия</button>
      <button class="btn g sm2" onclick="addOther('t')">+ амортизация</button>
     </div>
-    <p class="xs mut" style="margin:8px 0 0">Тариф за кВт·ч, а также ставки общепроизводственных и общехозяйственных расходов — общие для всех изделий, в разделе «Ещё».</p>`:''}</div>`}
+    <p class="xs mut" style="margin:8px 0 0">Тариф за кВт·ч, а также ставки общепроизводственных и общехозяйственных расходов — общие для всех изделий, в разделе «Настройки».</p>`:''}</div>`}
 function lineHtml(x){
  const act = x.k==='m'?`editLine(${x.row})`:(['e','t'].includes(x.k)?`editOther('${x.k}',${x.row})`:'');
  return `<div class="lrow"><div ${act?`onclick="${act}" style="cursor:pointer"`:''}>
@@ -1225,7 +1213,7 @@ function priceBox(l,m,row){
  let sub='';
  if(AVG){
   sub=`Средневзвешенная за ${esc(ymLabel(curYM()).toLowerCase())} — считается по всем закупкам месяца.
-   <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Ещё»</a>`;
+   <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Настройках»</a>`;
  } else if(n===1){
   sub=`Закупка ${esc(lotLabel(m,LOTS[0]))}${LOTS[0].d?' от '+lotDate(LOTS[0]):''}. Партия одна.`;
  } else {
@@ -1731,7 +1719,7 @@ function avgView(){
     <td></td><td class="num"><b>${fmt(tot.cs+a.c,2)}</b></td></tr>`})()}
   </tbody></table></div>
   <p class="xs mut" style="margin:8px 0 0">Общепроизводственные и общехозяйственные собраны в две строки: приход — закупки из отмеченных разделов, списание — то, что начислено на изделия. Поштучно эти материалы в ведомости не показываются. Остаток на конец переходит на начало следующего месяца.</p>
-  ${!Object.values(accGroups()).length?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения по этим статьям нет. Отметьте разделы в «Ещё → Разделы справочника».</div>`:''}
+  ${!Object.values(accGroups()).length?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения по этим статьям нет. Отметьте разделы в «Настройки → Справочники».</div>`:''}
   ${accNoBreak(avgYM)?`<div class="card tight sm mut" style="margin-top:10px">Списаний без разбивки по статьям: ${accNoBreak(avgYM)}. Это записи, сделанные до появления этой ведомости — по ним видна только общая себестоимость.</div>`:''}`
  :`<div class="card"><h3 style="margin-bottom:8px">За этот месяц движений нет</h3>
    <p class="sm mut" style="margin:0">Ведомость наполняется закупками и списаниями. Внесите закупку на складе или спишите материалы по заказу.</p></div>`}
@@ -2351,7 +2339,10 @@ function renderMore(){
  document.getElementById('st-ohr').value=accPct('ohr');
  document.getElementById('st-low').value=S.settings.low;
  const box=document.getElementById('data-box');
- if(box)box.innerHTML = S.demo
+ if(box)box.innerHTML=dataBoxHtml();
+ }
+function dataBoxHtml(){
+ return S.demo
   ? `${MODE==='cloud'?'<div class="card tight sm warnbox" style="margin-bottom:12px">Вы в общей базе — эти две кнопки меняют данные у всех участников.</div>':''}
      <p class="sm mut" style="margin:0 0 12px">Сейчас загружен пример из Excel: ${S.materials.length} материалов, ${S.recipes.length} изделий.</p>
      <button class="btn d full" onclick="clearAll()">Очистить всё и начать с чистого листа</button>`
@@ -2359,9 +2350,13 @@ function renderMore(){
      <p class="sm mut" style="margin:0 0 12px">Приложение пустое — заполняете с нуля${S.materials.length||S.recipes.length?` (уже заведено: ${S.materials.length} материалов, ${S.recipes.length} изделий)`:''}.</p>
      <button class="btn g full" style="margin-bottom:10px" onclick="loadDemo()">Загрузить пример из Excel — 481 материал, 71 изделие</button>
      ${S.materials.length||S.recipes.length?`<button class="btn d full" onclick="clearAll()">Очистить всё</button>`:''}`;
+}
+/* Сверка с Excel живёт на вкладке «Отчёты» и рисуется отдельно. */
+function renderVerify(){
  const vbox=document.getElementById('verify-card');
  if(vbox)vbox.style.display=S.demo?'':'none';
- if(!S.demo){document.getElementById('verify').innerHTML='';return}
+ const el=document.getElementById('verify'); if(!el)return;
+ if(!S.demo){el.innerHTML='';return}
  let ok=0,rows='';
  for(const r of S.recipes){if(r.xl==null)continue;const {cost}=calc(r),dd=cost-r.xl;
   if(Math.abs(dd)<=Math.max(0.05,Math.abs(r.xl)*0.002)){ok++;continue}
@@ -2397,7 +2392,7 @@ function expCSV(what){let rows;
 function loadDemo(){
  const shared=MODE==='cloud';
  const msg=shared
-  ? 'ВНИМАНИЕ: вы подключены к общей базе.\n\nПример из Excel заменит данные У ВСЕХ, кто с ней работает — и у мастера, и у технолога.\n\nЕсли нужно просто посмотреть пример, выйдите из общей базы («Ещё» → «Выйти») и загрузите его локально.\n\nВсё равно заменить общую базу?'
+  ? 'ВНИМАНИЕ: вы подключены к общей базе.\n\nПример из Excel заменит данные У ВСЕХ, кто с ней работает — и у мастера, и у технолога.\n\nЕсли нужно просто посмотреть пример, выйдите из общей базы («Настройки» → «Выйти») и загрузите его локально.\n\nВсё равно заменить общую базу?'
   : 'Загрузить пример из Excel? Всё, что вы завели сейчас, будет заменено.';
  if((shared||S.materials.length||S.recipes.length)&&!confirm(msg))return;
  S=demoData();onlyUsed=true;save();toast('Пример загружен');tab('prod')}
@@ -2612,14 +2607,46 @@ function cloudResolve(mine){
  else{cloudPull(false).then(cur=>{if(cur){CL.ver=cur.version;S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});
    save(true);syncMark(false,CL.ver);closeAll();render();syncBadge();toast('Загружена версия из общей базы')}})}
 }
+/* Служебное: данные приложения, резервная копия и общая база. Мастеру это
+   не нужно каждый день, поэтому живёт под шестерёнкой в шапке, а не во вкладке.
+   В мобильном приложении раздел, скорее всего, уберут совсем. */
+function openAdmin(){closeAll();push(adminView)}
+function adminView(){
+ setTimeout(renderBk,0);
+ return head('Служебное','Данные, копии и общая база')+`<div class="wrap" style="padding-top:12px">
+  <div class="card">
+    <h3 style="margin-bottom:8px">Данные приложения</h3>
+    ${dataBoxHtml()}
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:4px">Резервная копия</h3>
+    <p class="sm mut" style="margin:0 0 12px">База живёт в этом браузере. Скачивайте копию перед крупными правками — её же можно открыть на другом устройстве.</p>
+    <div class="grid2">
+      <button class="btn g" onclick="expJSON()">Скачать базу</button>
+      <button class="btn g" onclick="document.getElementById('imp').click()">Загрузить базу</button>
+    </div>
+    <input type="file" id="imp" accept=".json" style="display:none" onchange="impJSON(this)">
+    <div class="grid2" style="margin-top:10px">
+      <button class="btn g" onclick="expCSV('mat')">Материалы в CSV</button>
+      <button class="btn g" onclick="expCSV('prod')">Изделия в CSV</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:8px">Общая база</h3>
+    ${cloudBoxHtml()}
+  </div>
+ </div>`;
+}
 function renderCloudCard(){
  const el=document.getElementById('cloud-box'); if(!el)return;
+ el.innerHTML=cloudBoxHtml(); renderBk();
+}
+function cloudBoxHtml(){
  if(MODE!=='cloud'){
-  el.innerHTML=`<p class="sm mut" style="margin:0 0 12px">Сейчас данные хранятся только в этом браузере. Подключитесь к общей базе, чтобы работать вместе — правки будут видны всем.</p>
+  return `<p class="sm mut" style="margin:0 0 12px">Сейчас данные хранятся только в этом браузере. Подключитесь к общей базе, чтобы работать вместе — правки будут видны всем.</p>
    <button class="btn full" onclick="gateShow();gateLogin()">Подключиться к общей базе</button>`;
-  return;
  }
- el.innerHTML=`<div class="row sm" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">
+ return `<div class="row sm" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">
    <span class="tag ${CL.err?'bad':'ok'}">${CL.err?'нет связи':'подключено'}</span>
    <span class="tag">вы: ${esc(whoAmI())}</span>
    ${CL.at?`<span class="tag">последнее сохранение: ${esc(new Date(CL.at).toLocaleString('ru-RU'))}${CL.by?', '+esc(CL.by):''}</span>`:''}
@@ -2634,7 +2661,6 @@ function renderCloudCard(){
    <button class="btn g sm2" onclick="bkMake().then(ok=>{if(ok)toast('Копия сделана');renderBk()})">Сделать копию</button></div>
   <div id="bk-box" class="sm mut"><span class="xs mut">Загружаю…</span></div>
   <p class="xs mut" style="margin:10px 0 0">Копия состояния сохраняется в общей базе раз в сутки, хранятся последние ${BK_KEEP}.</p>`;
- renderBk();
 }
 
 /* --- старт --- */
@@ -2643,7 +2669,8 @@ function render(){
  if(tab_==='prod')renderProd();
  if(tab_==='stock')renderStock();
  if(tab_==='orders')renderOrders();
- if(tab_==='more'){renderMore();renderCloudCard()}
+ if(tab_==='rep')renderVerify();
+ if(tab_==='more')renderMore();
 }
 S=load();
 onlyUsed=!!S.demo;

@@ -80,6 +80,36 @@ T.check(!/toggleLot\s*\(/.test(src), 'ссылки «взять из друго�
 T.check(!/function matPrice\(m,\s*lotId\)/.test(src), 'matPrice не принимает выбранную партию');
 T.check(!/matPrice\(m,\s*l\.lot\)/.test(src), 'расчёт не спрашивает партию у строки состава');
 
+T.head('Вкладки на месте');
+/* Отчёты переехали из «Ещё» на свою вкладку (14.09.2026): ведомость и сверка
+   с Excel — это отчёты, а не настройки. Сама вкладка «Ещё» переименована. */
+for (const [имя, метка] of [['Изделия', 'prod'], ['Склад', 'stock'], ['Заказы', 'orders'],
+                            ['Отчёты', 'rep'], ['Настройки', 'more']]) {
+  T.check(new RegExp('data-s="' + метка + '"').test(html), 'кнопка вкладки: ' + имя);
+  T.check(new RegExp('<section id="s-' + метка + '"').test(html), 'раздел вкладки: ' + имя);
+}
+T.check(!/>Ещё<\/button>/.test(html), 'вкладки «Ещё» больше нет');
+T.check(html.indexOf('Ведомость по средневзвешенной') > html.indexOf('<section id="s-rep"')
+     && html.indexOf('Ведомость по средневзвешенной') < html.indexOf('<section id="s-more"'),
+  'ведомость лежит во вкладке «Отчёты»');
+T.check(html.indexOf('id="verify-card"') > html.indexOf('<section id="s-rep"')
+     && html.indexOf('id="verify-card"') < html.indexOf('<section id="s-more"'),
+  'сверка с Excel лежит там же');
+T.check(src.includes('function renderVerify('), 'сверка рисуется своей функцией');
+T.check(/if\(tab_==='rep'\)renderVerify\(\)/.test(src), 'и вызывается при открытии вкладки');
+
+T.head('Служебное — под шестерёнкой, а не во вкладке');
+/* Данные приложения, резервная копия и общая база мастеру каждый день не нужны:
+   они живут в шторке под шестерёнкой в шапке (14.09.2026). */
+T.check(/class="gear"/.test(html), 'шестерёнка есть в шапке');
+T.check(/onclick="openAdmin\(\)"/.test(html), 'она открывает служебный раздел');
+T.check(src.includes('function adminView('), 'служебный раздел собирается своей функцией');
+T.check(src.includes('function dataBoxHtml(') && src.includes('function cloudBoxHtml('),
+  'данные приложения и общая база вынесены в функции разметки');
+const более = html.slice(html.indexOf('<section id="s-more"'), html.indexOf('</section>', html.indexOf('<section id="s-more"')));
+for (const имя of ['Данные приложения', 'Резервная копия', 'Общая база'])
+  T.check(!более.includes(имя), 'во вкладке «Настройки» больше нет: ' + имя);
+
 T.head('Ключи от общей базы');
 T.check(src.includes('ahjfdswfafiborxplndr.supabase.co'), 'адрес общей базы на месте');
 T.check(src.includes('sb_publishable_'), 'открытый ключ на месте');
