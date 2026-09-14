@@ -2448,8 +2448,7 @@ function plural(n,one,few,many){
 }
 function dataBoxHtml(){
  const есть=S.materials.length||S.recipes.length;
- return `${MODE==='cloud'?'<div class="card tight sm warnbox" style="margin-bottom:12px">Вы в общей базе — эта кнопка меняет данные у всех участников.</div>':''}
-     <p class="sm mut" style="margin:0 0 12px">${есть
+ return `<p class="sm mut" style="margin:0 0 12px">${есть
        ? `Заведено: ${S.materials.length} ${plural(S.materials.length,'материал','материала','материалов')}, ${S.recipes.length} ${plural(S.recipes.length,'изделие','изделия','изделий')}.`
        : 'Приложение пустое — заполняете с нуля.'}</p>
      ${есть?`<button class="btn d full" onclick="clearAll()">Очистить всё</button>`:''}`;
@@ -2700,7 +2699,6 @@ function adminView(){
   </div>
   <div class="card">
     <h3 style="margin-bottom:4px">Резервная копия</h3>
-    <p class="sm mut" style="margin:0 0 12px">База живёт в этом браузере. Скачивайте копию перед крупными правками — её же можно открыть на другом устройстве.</p>
     <div class="grid2">
       <button class="btn g" onclick="expJSON()">Скачать базу</button>
       <button class="btn g" onclick="document.getElementById('imp').click()">Загрузить базу</button>
@@ -2735,12 +2733,10 @@ function cloudBoxHtml(){
    <button class="btn g" onclick="cloudPoll().then(()=>{renderCloudCard();toast('Проверено')})">Обновить сейчас</button>
    <button class="btn d" onclick="if(confirm('Выйти из общей базы? Данные останутся в этом браузере.')){sbLogout();render();syncBadge();renderCloudCard()}">Выйти</button>
   </div>
-  <p class="xs mut" style="margin:10px 0 0">Чужие правки подтягиваются автоматически раз в 20 секунд.</p>
   <div class="hsep" style="margin:12px 0"></div>
   <div class="row" style="margin-bottom:8px"><h3 class="sm">Копии базы</h3><span class="sp"></span>
    <button class="btn g sm2" onclick="bkMake().then(ok=>{if(ok)toast('Копия сделана');renderBk()})">Сделать копию</button></div>
-  <div id="bk-box" class="sm mut"><span class="xs mut">Загружаю…</span></div>
-  <p class="xs mut" style="margin:10px 0 0">Копия состояния сохраняется в общей базе раз в сутки, хранятся последние ${BK_KEEP}.</p>`;
+  <div id="bk-box" class="sm mut"><span class="xs mut">Загружаю…</span></div>`;
 }
 
 /* --- старт --- */
