@@ -125,6 +125,15 @@ T.check(src.includes("lsSet(UKEY"), 'выбор сохраняется межд�
 T.check(/applyFold\('mat'/.test(src) && /applyFold\('log'/.test(src),
   'состояние применяется при отрисовке обоих списков');
 
+T.head('Инструкция для пользователя');
+/* Вся логика расчёта описана внутри приложения (14.09.2026): «Параметры →
+   Инструкция», десять разделов, раскрываются по одному. */
+T.check(src.includes('function helpView('), 'инструкция собирается своей функцией');
+T.check(/onclick="openHelp\(\)"/.test(html), 'кнопка «Открыть инструкцию» на месте');
+T.check((src.match(/^ \['[^']+', `/gm) || []).length >= 10, 'разделов не меньше десяти');
+for (const кусок of ['партии', 'Цена продажи', 'Средневзвешенная', 'Налог'])
+  T.check(src.includes(кусок), 'в инструкции разобрано: ' + кусок);
+
 T.head('Ключи от общей базы');
 T.check(src.includes('ahjfdswfafiborxplndr.supabase.co'), 'адрес общей базы на месте');
 T.check(src.includes('sb_publishable_'), 'открытый ключ на месте');
