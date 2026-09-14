@@ -285,7 +285,7 @@ a{cursor:pointer}
   <button data-s="stock" onclick="tab('stock')"><svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>Склад</button>
   <button data-s="orders" onclick="tab('orders')"><svg viewBox="0 0 24 24"><path d="M6 4h12l1.5 16H4.5L6 4z"/><path d="M9 8a3 3 0 0 0 6 0"/></svg>Заказы</button>
   <button data-s="rep" onclick="tab('rep')"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Отчёты</button>
-  <button data-s="more" onclick="tab('more')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Настройки</button>
+  <button data-s="more" onclick="tab('more')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Параметры</button>
 </div></nav>
 
 <div class="sheet" id="sheet" onclick="if(event.target===this)closeAll()"><div id="sheet-in"></div></div>
@@ -297,7 +297,7 @@ const KEY='masya_cost_v1';
 /* opr / ohr — общепроизводственные и общехозяйственные расходы, в процентах.
    Начисляются каждому изделию общей строкой от суммы прямых затрат
    (материалы + электроэнергия + амортизация). Ставки общие для всего
-   приложения и меняются в «Настройки → Как считается цена». */
+   приложения и меняются в «Параметры → Как считается цена». */
 const DEF_SET={coef:3,round:10,kwt:1.7,low:15,base:'lot',opr:10,ohr:2};
 let S=null, mem=null;
 
@@ -998,7 +998,7 @@ function renderProd(){
     <b style="color:var(--ink)">4.</b> «Заказы» → соберите заказ и нажмите «Списать материалы со склада».
    </div>
    <div class="hsep"></div>
-   <p class="xs mut" style="margin:0">Хотите посмотреть на готовом примере — «Настройки» → «Загрузить пример из Excel».</p>
+   <p class="xs mut" style="margin:0">Хотите посмотреть на готовом примере — шестерёнка в правом верхнем углу → «Загрузить пример из Excel».</p>
   </div>`;
   return;
  }
@@ -1098,7 +1098,7 @@ function blockHtml(k,arr,s,hid){
      <button class="btn g sm2" onclick="addOther('e')">+ электроэнергия</button>
      <button class="btn g sm2" onclick="addOther('t')">+ амортизация</button>
     </div>
-    <p class="xs mut" style="margin:8px 0 0">Тариф за кВт·ч, а также ставки общепроизводственных и общехозяйственных расходов — общие для всех изделий, в разделе «Настройки».</p>`:''}</div>`}
+    <p class="xs mut" style="margin:8px 0 0">Тариф за кВт·ч, а также ставки общепроизводственных и общехозяйственных расходов — общие для всех изделий, в разделе «Параметры».</p>`:''}</div>`}
 function lineHtml(x){
  const act = x.k==='m'?`editLine(${x.row})`:(['e','t'].includes(x.k)?`editOther('${x.k}',${x.row})`:'');
  return `<div class="lrow"><div ${act?`onclick="${act}" style="cursor:pointer"`:''}>
@@ -1225,7 +1225,7 @@ function priceBox(l,m,row){
  let sub='';
  if(AVG){
   sub=`Средневзвешенная за ${esc(ymLabel(curYM()).toLowerCase())} — считается по всем закупкам месяца.
-   <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Настройках»</a>`;
+   <a href="#" onclick="closeAll();tab('more');return false">Изменить в «Параметрах»</a>`;
  } else if(n===1){
   sub=`Закупка ${esc(lotLabel(m,LOTS[0]))}${LOTS[0].d?' от '+lotDate(LOTS[0]):''}. Партия одна.`;
  } else {
@@ -1744,7 +1744,7 @@ function avgView(){
     <td></td><td class="num"><b>${fmt(tot.cs+a.c,2)}</b></td></tr>`})()}
   </tbody></table></div>
   <p class="xs mut" style="margin:8px 0 0">Общепроизводственные и общехозяйственные собраны в две строки: приход — закупки из отмеченных разделов, списание — то, что начислено на изделия. Поштучно эти материалы в ведомости не показываются. Остаток на конец переходит на начало следующего месяца.</p>
-  ${!Object.values(accGroups()).length?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения по этим статьям нет. Отметьте разделы в «Настройки → Справочники».</div>`:''}
+  ${!Object.values(accGroups()).length?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения по этим статьям нет. Отметьте разделы в «Параметры → Справочники».</div>`:''}
   ${accNoBreak(avgYM)?`<div class="card tight sm mut" style="margin-top:10px">Списаний без разбивки по статьям: ${accNoBreak(avgYM)}. Это записи, сделанные до появления этой ведомости — по ним видна только общая себестоимость.</div>`:''}`
  :`<div class="card"><h3 style="margin-bottom:8px">За этот месяц движений нет</h3>
    <p class="sm mut" style="margin:0">Ведомость наполняется закупками и списаниями. Внесите закупку на складе или спишите материалы по заказу.</p></div>`}
@@ -2417,7 +2417,7 @@ function expCSV(what){let rows;
 function loadDemo(){
  const shared=MODE==='cloud';
  const msg=shared
-  ? 'ВНИМАНИЕ: вы подключены к общей базе.\n\nПример из Excel заменит данные У ВСЕХ, кто с ней работает — и у мастера, и у технолога.\n\nЕсли нужно просто посмотреть пример, выйдите из общей базы («Настройки» → «Выйти») и загрузите его локально.\n\nВсё равно заменить общую базу?'
+  ? 'ВНИМАНИЕ: вы подключены к общей базе.\n\nПример из Excel заменит данные У ВСЕХ, кто с ней работает — и у мастера, и у технолога.\n\nЕсли нужно просто посмотреть пример, выйдите из общей базы (шестерёнка в правом верхнем углу → «Выйти») и загрузите его локально.\n\nВсё равно заменить общую базу?'
   : 'Загрузить пример из Excel? Всё, что вы завели сейчас, будет заменено.';
  if((shared||S.materials.length||S.recipes.length)&&!confirm(msg))return;
  S=demoData();onlyUsed=true;save();toast('Пример загружен');tab('prod')}
