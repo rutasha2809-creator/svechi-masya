@@ -224,9 +224,11 @@ a{cursor:pointer}
 </section>
 
 <section id="s-rep">
-  <div class="fold" onclick="foldBox('avg')"><h3 class="sm mut">Ведомость по месяцам</h3><span class="sp"></span>
+  <div id="avg-top"></div>
+  <div class="fold" onclick="foldBox('avg')"><h3 class="sm mut">Ведомость по материалам</h3><span class="sp"></span>
     <span class="xs mut" id="avg-count"></span><span class="arw" id="avg-arw"></span></div>
   <div id="avg-wrap"></div>
+  <div id="avg-bottom"></div>
 </section>
 
 <section id="s-more">
@@ -1706,7 +1708,10 @@ function avgBody(){
  });
  const tot=rows.reduce((a,[,x])=>({os:a.os+x.os,is:a.is+x.is,ws:a.ws+x.wSum,cs:a.cs+x.cs}),{os:0,is:0,ws:0,cs:0});
  const over=rows.filter(([,x])=>x.over>0.0001);
- return {n:rows.length, html:`
+ return {n:rows.length,
+ /* Страница «Отчёты» — это несколько самостоятельных таблиц. Сворачивается
+    только ведомость по материалам; месяц, плашки и итоги остаются на виду. */
+ top:`
  <label class="f"><span>Месяц</span><select onchange="setAvgYM(this.value)">
   ${months.map(v=>`<option value="${esc(v)}" ${v===avgYM?'selected':''}>${esc(ymLabel(v))}</option>`).join('')}</select></label>
  <div class="kpi" style="margin-bottom:12px">
@@ -1715,7 +1720,8 @@ function avgBody(){
   <div><div class="l">Списано в изделия</div><div class="v num" style="color:var(--warn)">${fmt(tot.ws,0)} ₽</div></div>
   <div><div class="l">Остаток на конец</div><div class="v num">${fmt(tot.cs,0)} ₽</div></div>
  </div>
- ${over.length?`<div class="card tight sm warnbox">По ${over.length} ${over.length===1?'материалу':'материалам'} списано больше, чем было на складе. В ведомости учтено только фактическое количество — проверьте закупки.</div>`:''}
+ ${over.length?`<div class="card tight sm warnbox">По ${over.length} ${over.length===1?'материалу':'материалам'} списано больше, чем было на складе. В ведомости учтено только фактическое количество — проверьте закупки.</div>`:''}`,
+ table:`
  ${(rows.length||accAny(avgYM))?`<p class="xs mut" style="margin:-4px 0 8px">Таблица прокручивается вбок. Нажмите на материал, чтобы открыть его карточку.</p>
  <div class="card" style="overflow-x:auto">
   <table class="tt"><thead><tr>
@@ -1739,11 +1745,11 @@ function avgBody(){
     <td></td><td class="num"><b>${fmt(tot.ws+a.out,2)}</b></td>
     <td></td><td class="num"><b>${fmt(tot.cs+a.c,2)}</b></td></tr>`})()}
   </tbody></table></div>
-  <p class="xs mut" style="margin:8px 0 0">Общепроизводственные и общехозяйственные собраны в две строки: приход — закупки из отмеченных разделов, списание — то, что начислено на изделия. Поштучно эти материалы в ведомости не показываются. Остаток на конец переходит на начало следующего месяца.</p>
   ${!Object.values(accGroups()).length?`<div class="card tight sm warnbox" style="margin-top:10px">Ни один раздел справочника не отмечен, поэтому пополнения по этим статьям нет. Отметьте разделы в «Параметры → Справочники».</div>`:''}
   ${accNoBreak(avgYM)?`<div class="card tight sm mut" style="margin-top:10px">Списаний без разбивки по статьям: ${accNoBreak(avgYM)}. Это записи, сделанные до появления этой ведомости — по ним видна только общая себестоимость.</div>`:''}`
  :`<div class="card"><h3 style="margin-bottom:8px">За этот месяц движений нет</h3>
-   <p class="sm mut" style="margin:0">Ведомость наполняется закупками и списаниями. Внесите закупку на складе или спишите материалы по заказу.</p></div>`}
+   <p class="sm mut" style="margin:0">Ведомость наполняется закупками и списаниями. Внесите закупку на складе или спишите материалы по заказу.</p></div>`}`,
+ bottom:`
  ${taxMonthHtml(avgYM)}
  ${itogoHtml(avgYM,tot)}
  <div class="card tight sm" style="margin-top:12px">
@@ -1755,8 +1761,11 @@ function avgBody(){
 }
 /* Вкладка «Отчёты»: ведомость сразу раскрыта, отдельной страницы у неё нет. */
 function renderReports(){
- const box=document.getElementById('avg-wrap');
- if(box){box.innerHTML=avgBody().html; applyFold('avg');}
+ const b=avgBody();
+ const верх=document.getElementById('avg-top'); if(верх)верх.innerHTML=b.top;
+ const таблица=document.getElementById('avg-wrap'); if(таблица)таблица.innerHTML=b.table;
+ const низ=document.getElementById('avg-bottom'); if(низ)низ.innerHTML=b.bottom;
+ applyFold('avg',b.n);
 }
 
 /* ============ ОТМЕНА ЗАПИСИ В ЖУРНАЛЕ ============

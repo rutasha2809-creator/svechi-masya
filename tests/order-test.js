@@ -283,11 +283,11 @@ for (const [имя, fn] of [
   ['Карточка заказа', () => app.orderView()],
   ['Выбор изделий', () => { app.pickRecipes('т', '', () => {}); return app.pickRecView('т'); }],
   ['Налог в ведомости', () => app.taxMonthHtml(ym)],
-  ['Ведомость целиком', () => app.avgBody().html],
+  ['Ведомость целиком', () => app.avgBody().top + app.avgBody().table + app.avgBody().bottom],
 ]) {
   try { fn(); T.ok(имя); } catch (e) { T.bad(имя + ' — упал: ' + e.message); }
 }
-T.check(app.avgBody().html.includes('Налог за месяц'), 'блок налога есть в ведомости');
+T.check(app.avgBody().bottom.includes('Налог за месяц'), 'блок налога есть в ведомости');
 T.check(app.allMonths().includes(ym), 'месяц с заказами попадает в список месяцев ведомости');
 
 T.done('заказы и налог');
