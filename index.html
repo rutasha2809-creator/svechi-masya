@@ -302,14 +302,6 @@ function fresh(){
     cats:['Интерьерные свечи','Формовые свечи','Контейнерные свечи','Гипсовый декор','Ароматизация','Наборы'],
     groups:{}, groupsOff:[], settings:{...DEF_SET}, log:[], demo:false, v:2 };
 }
-function demoData(){
-  return {
-    materials: SEED.materials.map(m=>({...m})),
-    recipes: SEED.recipes.map(r=>JSON.parse(JSON.stringify(r))),
-    cats: [...new Set(SEED.recipes.map(r=>r.c))],
-    settings:{...DEF_SET}, log:[], demo:true, v:2
-  };
-}
 function save(skipCloud){
   const raw=JSON.stringify(S);
   try{ localStorage.setItem(KEY,raw) }catch(e){ mem=raw }
@@ -2442,15 +2434,25 @@ function renderMore(){
  const box=document.getElementById('data-box');
  if(box)box.innerHTML=dataBoxHtml();
  }
+/* Кнопки «Загрузить пример из Excel» больше нет (14.09.2026): в рабочей базе
+   она только опасна — заменила бы данные у всех участников. Пример остался
+   в коде, на нём держатся автотесты. */
+/* «1 материал, 2 материала, 5 материалов» — иначе в подписях получается
+   «3 материалов, 1 изделий». */
+function plural(n,one,few,many){
+ n=Math.abs(+n||0)%100; const d=n%10;
+ if(n>10&&n<20)return many;
+ if(d===1)return one;
+ if(d>=2&&d<=4)return few;
+ return many;
+}
 function dataBoxHtml(){
- return S.demo
-  ? `${MODE==='cloud'?'<div class="card tight sm warnbox" style="margin-bottom:12px">Вы в общей базе — эти две кнопки меняют данные у всех участников.</div>':''}
-     <p class="sm mut" style="margin:0 0 12px">Сейчас загружен пример из Excel: ${S.materials.length} материалов, ${S.recipes.length} изделий.</p>
-     <button class="btn d full" onclick="clearAll()">Очистить всё и начать с чистого листа</button>`
-  : `${MODE==='cloud'?'<div class="card tight sm warnbox" style="margin-bottom:12px">Вы в общей базе — эти кнопки меняют данные у всех участников.</div>':''}
-     <p class="sm mut" style="margin:0 0 12px">Приложение пустое — заполняете с нуля${S.materials.length||S.recipes.length?` (уже заведено: ${S.materials.length} материалов, ${S.recipes.length} изделий)`:''}.</p>
-     <button class="btn g full" style="margin-bottom:10px" onclick="loadDemo()">Загрузить пример из Excel — 481 материал, 71 изделие</button>
-     ${S.materials.length||S.recipes.length?`<button class="btn d full" onclick="clearAll()">Очистить всё</button>`:''}`;
+ const есть=S.materials.length||S.recipes.length;
+ return `${MODE==='cloud'?'<div class="card tight sm warnbox" style="margin-bottom:12px">Вы в общей базе — эта кнопка меняет данные у всех участников.</div>':''}
+     <p class="sm mut" style="margin:0 0 12px">${есть
+       ? `Заведено: ${S.materials.length} ${plural(S.materials.length,'материал','материала','материалов')}, ${S.recipes.length} ${plural(S.recipes.length,'изделие','изделия','изделий')}.`
+       : 'Приложение пустое — заполняете с нуля.'}</p>
+     ${есть?`<button class="btn d full" onclick="clearAll()">Очистить всё</button>`:''}`;
 }
 function saveSettings(){
  S.settings.coef=parseFloat(document.getElementById('st-coef').value)||3;
@@ -2474,13 +2476,6 @@ function expCSV(what){let rows;
   ...S.recipes.map(r=>{const {cost}=calc(r),p=priceOf(r,cost);return [r.c,r.n,cost.toFixed(2),(r.coef??S.settings.coef),p,(p-cost).toFixed(2)]})];
  dl((what==='mat'?'материалы':'изделия')+'.csv','\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n'),'text/csv');
  toast('CSV скачан')}
-function loadDemo(){
- const shared=MODE==='cloud';
- const msg=shared
-  ? 'ВНИМАНИЕ: вы подключены к общей базе.\n\nПример из Excel заменит данные У ВСЕХ, кто с ней работает — и у мастера, и у технолога.\n\nЕсли нужно просто посмотреть пример, выйдите из общей базы (шестерёнка в правом верхнем углу → «Выйти») и загрузите его локально.\n\nВсё равно заменить общую базу?'
-  : 'Загрузить пример из Excel? Всё, что вы завели сейчас, будет заменено.';
- if((shared||S.materials.length||S.recipes.length)&&!confirm(msg))return;
- S=demoData();onlyUsed=true;save();toast('Пример загружен');tab('prod')}
 function clearAll(){
  const shared=MODE==='cloud';
  if(!confirm(shared
@@ -2758,7 +2753,7 @@ function render(){
  if(tab_==='more')renderMore();
 }
 S=load();
-onlyUsed=!!S.demo;
+onlyUsed=false;
 ['q-prod','q-mat'].forEach(i=>{const e=document.getElementById(i);if(e)e.oninput=render});
 authLoad();
 render();
