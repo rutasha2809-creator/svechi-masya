@@ -95,10 +95,10 @@ T.check(html.indexOf('id="avg-wrap"') > html.indexOf('<section id="s-rep"')
 T.check(!/onclick="openAvg\(\)"[^>]*>\s*Открыть ведомость/.test(html), 'кнопки «Открыть ведомость» больше нет');
 T.check(!html.includes('Отчёт для бухгалтера: помесячно'), 'пояснение над ведомостью убрано');
 T.check(/onclick="foldBox\('avg'\)"/.test(html), 'ведомость сворачивается');
-T.check(html.indexOf('id="verify-card"') > html.indexOf('<section id="s-rep"')
-     && html.indexOf('id="verify-card"') < html.indexOf('<section id="s-more"'),
-  'сверка с Excel лежит там же');
-T.check(src.includes('function renderVerify('), 'сверка рисуется своей функцией');
+/* Сверка с Excel удалена совсем (14.09.2026): расчёт давно разошёлся с файлом
+   намеренно, а эталон стережёт test.js. Возвращать раздел не надо. */
+T.check(!/verify/i.test(html), 'сверки с Excel в приложении больше нет');
+T.check(!html.includes('Сверка с Excel'), 'и упоминаний в разметке тоже');
 T.check(/if\(tab_==='rep'\)renderReports\(\)/.test(src), 'и вызывается при открытии вкладки');
 
 T.head('Служебное — под шестерёнкой, а не во вкладке');

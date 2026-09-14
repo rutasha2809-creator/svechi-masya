@@ -227,14 +227,6 @@ a{cursor:pointer}
   <div class="fold" onclick="foldBox('avg')"><h3 class="sm mut">Ведомость по месяцам</h3><span class="sp"></span>
     <span class="xs mut" id="avg-count"></span><span class="arw" id="avg-arw"></span></div>
   <div id="avg-wrap"></div>
-  <div class="fold" style="margin-top:18px" onclick="foldBox('verify')"><h3 class="sm mut">Сверка с Excel</h3>
-    <span class="sp"></span><span class="arw" id="verify-arw"></span></div>
-  <div id="verify-wrap">
-    <div class="card" id="verify-card">
-      <p class="sm mut" style="margin:0 0 10px">Себестоимость здесь против вашего файла на исходных данных. Расхождения — ошибки формул в Excel, они разобраны в отчёте.</p>
-      <div id="verify"></div>
-    </div>
-  </div>
 </section>
 
 <section id="s-more">
@@ -1277,7 +1269,7 @@ function savePrice(id){const m=MAT(id);
 /* Списки на «Складе» сворачиваются: материалов много, и когда нужна только
    история закупок, длинный список мешает. Выбор помнится между запусками. */
 const UKEY='masya_ui_v1';
-let fold={mat:true,log:true,avg:true,verify:true};
+let fold={mat:true,log:true,avg:true};
 try{const u=JSON.parse(lsGet(UKEY)||'null');
  if(u)for(const k in fold)if(u[k]===false)fold[k]=false;}catch(e){}
 function foldBox(k){fold[k]=!fold[k];lsSet(UKEY,JSON.stringify(fold));render()}
@@ -1765,8 +1757,6 @@ function avgBody(){
 function renderReports(){
  const box=document.getElementById('avg-wrap');
  if(box){box.innerHTML=avgBody().html; applyFold('avg');}
- renderVerify();
- applyFold('verify');
 }
 
 /* ============ ОТМЕНА ЗАПИСИ В ЖУРНАЛЕ ============
@@ -2386,22 +2376,6 @@ function dataBoxHtml(){
      <p class="sm mut" style="margin:0 0 12px">Приложение пустое — заполняете с нуля${S.materials.length||S.recipes.length?` (уже заведено: ${S.materials.length} материалов, ${S.recipes.length} изделий)`:''}.</p>
      <button class="btn g full" style="margin-bottom:10px" onclick="loadDemo()">Загрузить пример из Excel — 481 материал, 71 изделие</button>
      ${S.materials.length||S.recipes.length?`<button class="btn d full" onclick="clearAll()">Очистить всё</button>`:''}`;
-}
-/* Сверка с Excel живёт на вкладке «Отчёты» и рисуется отдельно. */
-function renderVerify(){
- const vbox=document.getElementById('verify-card');
- if(vbox)vbox.style.display=S.demo?'':'none';
- const el=document.getElementById('verify'); if(!el)return;
- if(!S.demo){el.innerHTML='';return}
- let ok=0,rows='';
- for(const r of S.recipes){if(r.xl==null)continue;const {cost}=calc(r),dd=cost-r.xl;
-  if(Math.abs(dd)<=Math.max(0.05,Math.abs(r.xl)*0.002)){ok++;continue}
-  rows+=`<tr><td>${esc(r.n)}</td><td class="num">${fmt(r.xl,0)}</td><td class="num">${fmt(cost,0)}</td>
-   <td class="num" style="color:${dd>0?'var(--warn)':'var(--bad)'}">${dd>0?'+':''}${fmt(dd,0)}</td></tr>`}
- document.getElementById('verify').innerHTML=
-  `<div class="row sm" style="margin-bottom:8px;gap:6px"><span class="tag ok">совпало ${ok}</span>
-   <span class="tag ${rows?'warn':'ok'}">расходится ${S.recipes.filter(r=>r.xl!=null).length-ok}</span></div>`+
-  (rows?`<table><thead><tr><th>Изделие</th><th>Excel</th><th>Здесь</th><th>Δ</th></tr></thead><tbody>${rows}</tbody></table>`:'');
 }
 function saveSettings(){
  S.settings.coef=parseFloat(document.getElementById('st-coef').value)||3;
