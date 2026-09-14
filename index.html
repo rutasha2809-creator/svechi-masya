@@ -28,6 +28,11 @@ header .wrap{display:flex;align-items:center;gap:10px;height:56px}
 .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(150deg,var(--acc),var(--acc2));flex:0 0 auto;
 display:grid;place-items:center;color:#fff;font-size:15px}
 header h1{font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fold{display:flex;align-items:center;gap:8px;margin:0 0 8px;cursor:pointer;user-select:none}
+.fold h3{margin:0}
+.arw{width:16px;height:16px;flex:0 0 auto;border-right:2px solid var(--mut);border-bottom:2px solid var(--mut);
+ transform:rotate(45deg) translate(-3px,-3px);transition:transform .15s}
+.arw.up{transform:rotate(-135deg) translate(-3px,-3px)}
 .gear{flex:0 0 auto;margin-left:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
  background:var(--soft);border:1px solid var(--line);border-radius:9px;color:var(--mut);cursor:pointer;padding:0}
 .gear svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -191,18 +196,25 @@ a{cursor:pointer}
     <button class="btn g" onclick="openBuy()">+ Внести закупку</button>
   </div>
   <div class="row wrap2 xs" id="stock-sum" style="gap:6px;margin-bottom:12px"></div>
-  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-    <input id="q-mat" placeholder="Найти материал"></div>
-  <div class="chips" id="chips-mat"></div>
-  <button class="btn g full sm2" style="margin-bottom:10px" onclick="openGroups()">Разделы справочника — добавить свой</button>
-  <div class="card tight row wrap2" id="filters" style="gap:14px">
-    <label class="ck" id="lbl-used"><input type="checkbox" id="ck-used" onchange="onlyUsed=this.checked;renderStock()"><span>только те, что в рецептах</span></label>
-    <label class="ck"><input type="checkbox" id="ck-low" onchange="onlyLow=this.checked;renderStock()"><span>на исходе</span></label>
+  <div class="fold" onclick="foldStock('mat')"><h3 class="sm mut">Материалы</h3><span class="sp"></span>
+    <span class="xs mut" id="mat-count"></span><span class="arw" id="mat-arw"></span></div>
+  <div id="mat-wrap">
+    <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q-mat" placeholder="Найти материал"></div>
+    <div class="chips" id="chips-mat"></div>
+    <button class="btn g full sm2" style="margin-bottom:10px" onclick="openGroups()">Разделы справочника — добавить свой</button>
+    <div class="card tight row wrap2" id="filters" style="gap:14px">
+      <label class="ck" id="lbl-used"><input type="checkbox" id="ck-used" onchange="onlyUsed=this.checked;renderStock()"><span>только те, что в рецептах</span></label>
+      <label class="ck"><input type="checkbox" id="ck-low" onchange="onlyLow=this.checked;renderStock()"><span>на исходе</span></label>
+    </div>
+    <div class="list" id="list-mat"></div>
   </div>
-  <div class="list" id="list-mat"></div>
-  <h3 class="sm mut" style="margin:18px 0 8px">История: закупки и списания</h3>
-  <p class="xs mut" style="margin:-4px 0 8px">Ошиблись при вводе — отмените запись и заведите заново. Списание вернёт материалы на склад, закупка уберёт свою партию.</p>
-  <div class="list" id="list-log"></div>
+  <div class="fold" style="margin-top:18px" onclick="foldStock('log')"><h3 class="sm mut">История: закупки и списания</h3>
+    <span class="sp"></span><span class="xs mut" id="log-count"></span><span class="arw" id="log-arw"></span></div>
+  <div id="log-wrap">
+    <p class="xs mut" style="margin:-4px 0 8px">Ошиблись при вводе — отмените запись и заведите заново. Списание вернёт материалы на склад, закупка уберёт свою партию.</p>
+    <div class="list" id="list-log"></div>
+  </div>
 </section>
 
 <section id="s-orders">
@@ -1261,6 +1273,17 @@ function savePrice(id){const m=MAT(id);
  save();toast('Цена обновлена');back()}
 
 /* ============ СКЛАД ============ */
+/* Списки на «Складе» сворачиваются: материалов много, и когда нужна только
+   история закупок, длинный список мешает. Выбор помнится между запусками. */
+const UKEY='masya_ui_v1';
+let fold={mat:true,log:true};
+try{const u=JSON.parse(lsGet(UKEY)||'null'); if(u){fold.mat=u.mat!==false; fold.log=u.log!==false}}catch(e){}
+function foldStock(k){fold[k]=!fold[k];lsSet(UKEY,JSON.stringify(fold));renderStock()}
+function applyFold(k,n){
+ const w=document.getElementById(k+'-wrap'); if(w)w.style.display=fold[k]?'':'none';
+ const a=document.getElementById(k+'-arw'); if(a)a.classList.toggle('up',!!fold[k]);
+ const c=document.getElementById(k+'-count'); if(c)c.textContent=(n||0)+(fold[k]?'':' — свёрнуто');
+}
 function usedIds(){const s=new Set();for(const r of S.recipes)for(const l of r.l)if(l.m)s.add(l.m);return s}
 function renderStock(){
  renderLog();
@@ -1296,6 +1319,7 @@ function renderStock(){
  }
  const chips=document.getElementById('chips-mat'); if(chips)chips.style.display=real.length>8?'':'none';
  const total=rows.length; rows=rows.slice(0,300);
+ applyFold('mat',total);
  if(!S.materials.length){
   document.getElementById('chips-mat').innerHTML='';
   document.getElementById('stock-sum').innerHTML='';
@@ -1648,6 +1672,7 @@ function makeBatch(r,n){
 /* ---- журнал движений: живёт на вкладке «Склад» ---- */
 function renderLog(){
  const el=document.getElementById('list-log'); if(!el)return;
+ applyFold('log',(S.log||[]).length);
  const logs=S.log.slice(0,50);
  el.innerHTML=logs.length?logs.map(l=>{
   const g=logIdOf(l), info=logUndoInfo(l);

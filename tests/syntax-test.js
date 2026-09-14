@@ -110,6 +110,18 @@ const более = html.slice(html.indexOf('<section id="s-more"'), html.indexOf
 for (const имя of ['Данные приложения', 'Резервная копия', 'Общая база'])
   T.check(!более.includes(имя), 'во вкладке «Настройки» больше нет: ' + имя);
 
+T.head('Списки на «Складе» сворачиваются');
+/* Материалов много: когда нужна только история закупок, длинный список мешает.
+   Оба списка сворачиваются, выбор помнится между запусками (14.09.2026). */
+T.check(/onclick="foldStock\('mat'\)"/.test(html), 'заголовок «Материалы» — переключатель');
+T.check(/onclick="foldStock\('log'\)"/.test(html), 'заголовок истории — тоже переключатель');
+T.check(/id="mat-wrap"/.test(html) && /id="log-wrap"/.test(html), 'у обоих списков есть свой контейнер');
+T.check(src.includes('function foldStock(') && src.includes('function applyFold('),
+  'свёртывание живёт в своих функциях');
+T.check(src.includes("lsSet(UKEY"), 'выбор сохраняется между запусками');
+T.check(/applyFold\('mat'/.test(src) && /applyFold\('log'/.test(src),
+  'состояние применяется при отрисовке обоих списков');
+
 T.head('Ключи от общей базы');
 T.check(src.includes('ahjfdswfafiborxplndr.supabase.co'), 'адрес общей базы на месте');
 T.check(src.includes('sb_publishable_'), 'открытый ключ на месте');
