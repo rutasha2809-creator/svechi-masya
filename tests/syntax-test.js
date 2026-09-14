@@ -89,14 +89,17 @@ for (const [имя, метка] of [['Изделия', 'prod'], ['Склад', '
   T.check(new RegExp('<section id="s-' + метка + '"').test(html), 'раздел вкладки: ' + имя);
 }
 T.check(!/>Ещё<\/button>/.test(html), 'вкладки «Ещё» больше нет');
-T.check(html.indexOf('Ведомость по средневзвешенной') > html.indexOf('<section id="s-rep"')
-     && html.indexOf('Ведомость по средневзвешенной') < html.indexOf('<section id="s-more"'),
+T.check(html.indexOf('id="avg-wrap"') > html.indexOf('<section id="s-rep"')
+     && html.indexOf('id="avg-wrap"') < html.indexOf('<section id="s-more"'),
   'ведомость лежит во вкладке «Отчёты»');
+T.check(!/onclick="openAvg\(\)"[^>]*>\s*Открыть ведомость/.test(html), 'кнопки «Открыть ведомость» больше нет');
+T.check(!html.includes('Отчёт для бухгалтера: помесячно'), 'пояснение над ведомостью убрано');
+T.check(/onclick="foldBox\('avg'\)"/.test(html), 'ведомость сворачивается');
 T.check(html.indexOf('id="verify-card"') > html.indexOf('<section id="s-rep"')
      && html.indexOf('id="verify-card"') < html.indexOf('<section id="s-more"'),
   'сверка с Excel лежит там же');
 T.check(src.includes('function renderVerify('), 'сверка рисуется своей функцией');
-T.check(/if\(tab_==='rep'\)renderVerify\(\)/.test(src), 'и вызывается при открытии вкладки');
+T.check(/if\(tab_==='rep'\)renderReports\(\)/.test(src), 'и вызывается при открытии вкладки');
 
 T.head('Служебное — под шестерёнкой, а не во вкладке');
 /* Данные приложения, резервная копия и общая база мастеру каждый день не нужны:
@@ -113,10 +116,10 @@ for (const имя of ['Данные приложения', 'Резервная �
 T.head('Списки на «Складе» сворачиваются');
 /* Материалов много: когда нужна только история закупок, длинный список мешает.
    Оба списка сворачиваются, выбор помнится между запусками (14.09.2026). */
-T.check(/onclick="foldStock\('mat'\)"/.test(html), 'заголовок «Материалы» — переключатель');
-T.check(/onclick="foldStock\('log'\)"/.test(html), 'заголовок истории — тоже переключатель');
+T.check(/onclick="foldBox\('mat'\)"/.test(html), 'заголовок «Материалы» — переключатель');
+T.check(/onclick="foldBox\('log'\)"/.test(html), 'заголовок истории — тоже переключатель');
 T.check(/id="mat-wrap"/.test(html) && /id="log-wrap"/.test(html), 'у обоих списков есть свой контейнер');
-T.check(src.includes('function foldStock(') && src.includes('function applyFold('),
+T.check(src.includes('function foldBox(') && src.includes('function applyFold('),
   'свёртывание живёт в своих функциях');
 T.check(src.includes("lsSet(UKEY"), 'выбор сохраняется между запусками');
 T.check(/applyFold\('mat'/.test(src) && /applyFold\('log'/.test(src),

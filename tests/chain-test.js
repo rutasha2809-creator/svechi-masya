@@ -212,7 +212,7 @@ app.D = свеча; app.Did = свеча.id;
 экран('Карточка партии', () => app.lotView(воск.id, app.sortedLots(воск)[0].id));
 экран('Новый материал', app.newMatView);
 экран('Закупка', () => { app.buyRows = [{ id: воск.id, q: '', s: '', u: null }]; return app.buyView(); });
-экран('Ведомость по средневзвешенной', app.avgView);
+экран('Ведомость по средневзвешенной', app.avgBody);
 экран('Разделы справочника', app.groupsView);
 экран('Категории', app.catsView);
 экран('Новое изделие', app.newRecipeView);

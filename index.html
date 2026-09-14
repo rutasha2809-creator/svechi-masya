@@ -196,7 +196,7 @@ a{cursor:pointer}
     <button class="btn g" onclick="openBuy()">+ Внести закупку</button>
   </div>
   <div class="row wrap2 xs" id="stock-sum" style="gap:6px;margin-bottom:12px"></div>
-  <div class="fold" onclick="foldStock('mat')"><h3 class="sm mut">Материалы</h3><span class="sp"></span>
+  <div class="fold" onclick="foldBox('mat')"><h3 class="sm mut">Материалы</h3><span class="sp"></span>
     <span class="xs mut" id="mat-count"></span><span class="arw" id="mat-arw"></span></div>
   <div id="mat-wrap">
     <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -209,7 +209,7 @@ a{cursor:pointer}
     </div>
     <div class="list" id="list-mat"></div>
   </div>
-  <div class="fold" style="margin-top:18px" onclick="foldStock('log')"><h3 class="sm mut">История: закупки и списания</h3>
+  <div class="fold" style="margin-top:18px" onclick="foldBox('log')"><h3 class="sm mut">История: закупки и списания</h3>
     <span class="sp"></span><span class="xs mut" id="log-count"></span><span class="arw" id="log-arw"></span></div>
   <div id="log-wrap">
     <p class="xs mut" style="margin:-4px 0 8px">Ошиблись при вводе — отмените запись и заведите заново. Списание вернёт материалы на склад, закупка уберёт свою партию.</p>
@@ -224,15 +224,16 @@ a{cursor:pointer}
 </section>
 
 <section id="s-rep">
-  <div class="card">
-    <h3 style="margin-bottom:4px">Ведомость по средневзвешенной</h3>
-    <p class="sm mut" style="margin:0 0 12px">Отчёт для бухгалтера: помесячно по каждому материалу — остаток на начало, приход, средняя за месяц, списание и остаток на конец. На себестоимость и цены изделий не влияет: они считаются по цене партии.</p>
-    <button class="btn g full" onclick="openAvg()">Открыть ведомость</button>
-  </div>
-  <div class="card" id="verify-card">
-    <h3 style="margin-bottom:4px">Сверка с Excel</h3>
-    <p class="sm mut" style="margin:0 0 10px">Себестоимость здесь против вашего файла на исходных данных. Расхождения — ошибки формул в Excel, они разобраны в отчёте.</p>
-    <div id="verify"></div>
+  <div class="fold" onclick="foldBox('avg')"><h3 class="sm mut">Ведомость по месяцам</h3><span class="sp"></span>
+    <span class="xs mut" id="avg-count"></span><span class="arw" id="avg-arw"></span></div>
+  <div id="avg-wrap"></div>
+  <div class="fold" style="margin-top:18px" onclick="foldBox('verify')"><h3 class="sm mut">Сверка с Excel</h3>
+    <span class="sp"></span><span class="arw" id="verify-arw"></span></div>
+  <div id="verify-wrap">
+    <div class="card" id="verify-card">
+      <p class="sm mut" style="margin:0 0 10px">Себестоимость здесь против вашего файла на исходных данных. Расхождения — ошибки формул в Excel, они разобраны в отчёте.</p>
+      <div id="verify"></div>
+    </div>
   </div>
 </section>
 
@@ -1276,13 +1277,16 @@ function savePrice(id){const m=MAT(id);
 /* Списки на «Складе» сворачиваются: материалов много, и когда нужна только
    история закупок, длинный список мешает. Выбор помнится между запусками. */
 const UKEY='masya_ui_v1';
-let fold={mat:true,log:true};
-try{const u=JSON.parse(lsGet(UKEY)||'null'); if(u){fold.mat=u.mat!==false; fold.log=u.log!==false}}catch(e){}
-function foldStock(k){fold[k]=!fold[k];lsSet(UKEY,JSON.stringify(fold));renderStock()}
+let fold={mat:true,log:true,avg:true,verify:true};
+try{const u=JSON.parse(lsGet(UKEY)||'null');
+ if(u)for(const k in fold)if(u[k]===false)fold[k]=false;}catch(e){}
+function foldBox(k){fold[k]=!fold[k];lsSet(UKEY,JSON.stringify(fold));render()}
+
 function applyFold(k,n){
  const w=document.getElementById(k+'-wrap'); if(w)w.style.display=fold[k]?'':'none';
  const a=document.getElementById(k+'-arw'); if(a)a.classList.toggle('up',!!fold[k]);
- const c=document.getElementById(k+'-count'); if(c)c.textContent=(n||0)+(fold[k]?'':' — свёрнуто');
+ const c=document.getElementById(k+'-count');
+ if(c)c.textContent=(n==null?'':String(n))+(fold[k]?'':(n==null?'свёрнуто':' — свёрнуто'));
 }
 function usedIds(){const s=new Set();for(const r of S.recipes)for(const l of r.l)if(l.m)s.add(l.m);return s}
 function renderStock(){
@@ -1692,9 +1696,9 @@ function renderLog(){
 
 /* ============ ВЕДОМОСТЬ ПО СРЕДНЕВЗВЕШЕННОЙ ============ */
 let avgYM=null;
-function openAvg(){avgYM=null;closeAll();push(avgView)}
+function openAvg(){avgYM=null;closeAll();tab('rep')}
 function setAvgYM(v){avgYM=v;paint()}
-function avgView(){
+function avgBody(){
  const months=allMonths();
  if(!avgYM||months.indexOf(avgYM)<0)avgYM=months[0];
  const rows=[];
@@ -1710,7 +1714,7 @@ function avgView(){
  });
  const tot=rows.reduce((a,[,x])=>({os:a.os+x.os,is:a.is+x.is,ws:a.ws+x.wSum,cs:a.cs+x.cs}),{os:0,is:0,ws:0,cs:0});
  const over=rows.filter(([,x])=>x.over>0.0001);
- return head('Ведомость по средневзвешенной',ymLabel(avgYM))+`<div class="wrap" style="padding-top:12px">
+ return {n:rows.length, html:`
  <label class="f"><span>Месяц</span><select onchange="setAvgYM(this.value)">
   ${months.map(v=>`<option value="${esc(v)}" ${v===avgYM?'selected':''}>${esc(ymLabel(v))}</option>`).join('')}</select></label>
  <div class="kpi" style="margin-bottom:12px">
@@ -1755,7 +1759,14 @@ function avgView(){
   По этой цене в ведомости списывается всё, что ушло в производство в этом месяце. Остаток на конец переходит на начало следующего месяца.
   <br><br><b>На цены изделий эта ведомость не влияет.</b> Себестоимость считается по цене конкретной закупки — той, что выбрана в строке состава,
   или той, что «в работе». Ведомость нужна бухгалтеру для учёта и сверки, это отдельный отчёт.
- </div></div>`;
+ </div>`};
+}
+/* Вкладка «Отчёты»: ведомость сразу раскрыта, отдельной страницы у неё нет. */
+function renderReports(){
+ const box=document.getElementById('avg-wrap');
+ if(box){box.innerHTML=avgBody().html; applyFold('avg');}
+ renderVerify();
+ applyFold('verify');
 }
 
 /* ============ ОТМЕНА ЗАПИСИ В ЖУРНАЛЕ ============
@@ -2694,7 +2705,7 @@ function render(){
  if(tab_==='prod')renderProd();
  if(tab_==='stock')renderStock();
  if(tab_==='orders')renderOrders();
- if(tab_==='rep')renderVerify();
+ if(tab_==='rep')renderReports();
  if(tab_==='more')renderMore();
 }
 S=load();

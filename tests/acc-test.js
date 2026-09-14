@@ -104,7 +104,7 @@ T.head('ОПР и ОХР — две отдельные строки в само�
    больше нет, обе статьи стоят строками в таблице ведомости, под материалами. */
 T.check(typeof app.accHtml !== 'function', 'карточки «Расходы общей суммой» в приложении нет');
 app.avgYM = ym;
-const вед = app.avgView();
+const вед = app.avgBody().html;
 T.check(!вед.includes('Расходы общей суммой'), 'на странице ведомости этой карточки тоже нет');
 T.check(вед.includes('<div class="b">Общепроизводственные</div>'), 'строка ОПР стоит в таблице');
 T.check(вед.includes('<div class="b">Общехозяйственные</div>'), 'строка ОХР стоит в таблице');
@@ -124,11 +124,11 @@ T.check(app.accAny(ym) === true, 'движения по статьям за ме
 T.head('Списания без разбивки видны отдельно');
 S.log.push({ t: 'make', d: Date.now(), id: 'r1', n: 'Свеча', q: 1, cost: 100, use: [] });
 T.check(app.accNoBreak(ym) === 1, 'приложение считает записи без разбивки');
-T.check(app.avgView().includes('Списаний без разбивки'), 'и говорит о них в ведомости');
+T.check(app.avgBody().html.includes('Списаний без разбивки'), 'и говорит о них в ведомости');
 S.log = S.log.filter(e => e.acc || e.t !== 'make');
 
 T.head('Ведомость: итоговые строки');
-const h = app.avgView();
+const h = app.avgBody().html;
 T.check(h.includes('<b>ИТОГО</b>'), 'итоговая строка в конце таблицы');
 T.check(h.includes('плюс обе статьи расходов'), 'итог собирает материалы и обе статьи');
 T.check(h.includes('ИТОГО за месяц'), 'общая сводка внизу');
@@ -137,13 +137,13 @@ T.check(h.includes('Ушло в производство за месяц'), 'в 
 T.head('Если разделы не отмечены — ведомость предупреждает');
 const было = JSON.parse(JSON.stringify(app.accGroups()));
 S.accGroups = {};
-T.check(app.avgView().includes('Ни один раздел справочника не отмечен'), 'подсказка появилась');
+T.check(app.avgBody().html.includes('Ни один раздел справочника не отмечен'), 'подсказка появилась');
 S.accGroups = было;
-T.check(!app.avgView().includes('Ни один раздел справочника не отмечен'), 'и пропала, когда разделы отмечены');
+T.check(!app.avgBody().html.includes('Ни один раздел справочника не отмечен'), 'и пропала, когда разделы отмечены');
 
 T.head('Экраны строятся');
 for (const [имя, fn] of [
-  ['Ведомость', () => app.avgView()],
+  ['Ведомость', () => app.avgBody().html],
   ['Разделы справочника', () => app.groupsView()],
   ['Строки ОПР и ОХР', () => app.accTableRows(ym)],
   ['ИТОГО за месяц', () => app.itogoHtml(ym, { os: 0, is: 0, ws: 0, cs: 0 })],
