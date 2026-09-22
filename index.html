@@ -861,6 +861,29 @@ function groupKeys(obj){const G=obj||GROUPS();
  return Object.keys(G).sort((a,b)=>String(G[a]).localeCompare(String(G[b]),'ru',{numeric:true,sensitivity:'base'}))}
 function groupName(g){return GROUPS()[g]||(S.groups&&S.groups[g])||SEED.groups[g]||g}
 function groupCount(g){return S.materials.filter(m=>m.g===g&&!isPH(m)).length}
+/* ===== Готовая продукция «для своих целей» =====
+   Изделие, выпущенное заказом «для своих целей» (o.own), приходуется на
+   склад отдельным материалом — своя группа «fg», id «fg::<id изделия>» —
+   и появляется в списке материалов, доступном при сборке состава ДРУГОГО
+   изделия (например, маркетингового набора). Цена партии — фактическая
+   себестоимость на момент выпуска, как у любой другой партии. Обычные
+   (не «свои») заказы на склад ничего не приходуют. */
+const FG_GROUP='fg';
+function fgGroupEnsure(){
+ S.groups=S.groups||{};
+ if(!S.groups[FG_GROUP])S.groups[FG_GROUP]='Готовая продукция (для своих целей)';
+ S.groupsOff=(S.groupsOff||[]).filter(x=>x!==FG_GROUP);
+}
+function fgMatOf(r){
+ const id='fg::'+r.id;
+ let m=MAT(id);
+ if(!m){
+  fgGroupEnsure();
+  m={id,g:FG_GROUP,n:r.n,u:'шт',bu:'шт',p:0,s:0,min:0,lots:[]};
+  S.materials.push(m);
+ }
+ return m;
+}
 const isPH=m=>/^(нет|-|—)$/i.test(String(m.n||'').trim());
 function nice(t){t=String(t||'').trim(); if(NICE[t])return NICE[t];
  if(t===t.toUpperCase()&&t.length>3)t=t[0]+t.slice(1).toLowerCase();
@@ -1617,11 +1640,14 @@ function shipCheck(строки){
  }
  return {ok:!мало.length,мало,позиций,need};
 }
-/* Само списание. Одна запись в журнале на всю операцию. */
-function shipDo(строки,подпись,extra){
+/* Само списание. Одна запись в журнале на всю операцию.
+   own=true — заказ «для своих целей»: сверх обычного списания сырья каждое
+   готовое изделие приходуется на склад отдельной позицией (см. fgMatOf). */
+function shipDo(строки,подпись,extra,own){
  const {need}=shipUsage(строки);
  let cost=0, штук=0;
  const acc={opr:0,ohr:0};
+ const fgAdd=[];
  for(const x of строки){
   if(!x.rid)continue;
   const r=REC(x.rid); if(!r)continue;
@@ -1631,6 +1657,7 @@ function shipDo(строки,подпись,extra){
   /* ОПР и ОХР списываются в ведомости общей суммой с каждого изделия —
      ровно теми двумя строками, что начислены в расчёте. */
   for(const y of c.det){ if(y.k==='k'&&y.acc) acc[y.acc]+=(+y.c||0)*n }
+  if(own&&n>0)fgAdd.push({r,n,p:c.cost});
  }
  /* Упаковка заказа — прямые постоянные расходы, они входят в себестоимость. */
  for(const x of строки){
@@ -1643,8 +1670,16 @@ function shipDo(строки,подпись,extra){
   use.push({id,n:m.n,q:need[id]});
   consume(m,need[id]);
  }
+ const fg=[];
+ for(const f of fgAdd){
+  const m=fgMatOf(f.r);
+  const lot=newLot(f.n,f.p,{sum:rnd(f.p*f.n,2)});
+  m.lots=lotsOf(m); m.lots.push(lot); syncStock(m);
+  fg.push({id:m.id,lot:lot.id,n:m.n,q:f.n});
+ }
  const запись=Object.assign({g:logKey(),t:'make',d:Date.now(),n:подпись,q:штук,
-   cost:rnd(cost,2),base:costBase(),use,acc:{opr:rnd(acc.opr,2),ohr:rnd(acc.ohr,2)}},extra||{});
+   cost:rnd(cost,2),base:costBase(),use,acc:{opr:rnd(acc.opr,2),ohr:rnd(acc.ohr,2)}},
+   extra||{},fg.length?{fg}:{});
  S.log.unshift(запись);
  return запись;
 }
@@ -1846,14 +1881,31 @@ function restoreStock(m,amount,preferId){
  syncStock(m);
 }
 /* можно ли удалить запись и что при этом произойдёт */
+/* Готовая продукция (e.fg), приходованная этим выпуском, — можно откатить,
+   только если из неё ещё ничего не ушло на другое изделие. Иначе остатки
+   разойдутся: часть уже сидит в составе того, что собрано из неё. */
+function fgUndoBlocked(e){
+ for(const f of (e.fg||[])){
+  const m=MAT(f.id); if(!m)continue;
+  const l=lotById(m,f.lot); if(!l)continue;
+  if((+l.q0||0)-(+l.q||0)>0.0001)
+   return f.n+' — уже использована в составе другого изделия ('+qfmt((+l.q0||0)-(+l.q||0))+' '+baseOf(m)+')';
+ }
+ return null;
+}
 function logUndoInfo(e){
  if(!e)return {ok:false,why:'Запись не найдена'};
  if(e.t==='make'){
+  const блок=fgUndoBlocked(e);
+  if(блок)return {ok:false,why:'Отменить нельзя: '+блок+'. Сначала уберите её из того изделия.'};
   const назад=(e.use||[]).filter(u=>MAT(u.id));
+  const своё=(e.fg||[]).filter(f=>MAT(f.id));
   return {ok:true,kind:'make',
    what:назад.length?'Материалы вернутся на склад: '+назад.map(u=>{const m=MAT(u.id);
      return m.n+' '+qfmt(u.q)+' '+baseOf(m)}).slice(0,6).join(', ')+(назад.length>6?' и ещё '+(назад.length-6):'')
-    :'Эта запись сделана до того, как приложение стало запоминать расход, — на складе она ничего не изменит.'};
+    :'Эта запись сделана до того, как приложение стало запоминать расход, — на складе она ничего не изменит.'
+   +(своё.length?'\nГотовая продукция уйдёт со склада обратно: '+
+     своё.map(f=>f.n+' × '+qfmt(f.q)).join(', '):'')};
  }
  if(e.t==='buy'){
   const m=MAT(e.id);
@@ -1876,6 +1928,11 @@ function logUndo(g){
   for(const u of (e.use||[])){
    const m=MAT(u.id); if(!m)continue;
    restoreStock(m,+u.q||0);
+  }
+  for(const f of (e.fg||[])){
+   const m=MAT(f.id); if(!m)continue;
+   m.lots=lotsOf(m).filter(x=>x.id!==f.lot);
+   if(!m.lots.length)m.s=0; else syncStock(m);
   }
  } else if(e.t==='buy'){
   const m=MAT(e.id);
@@ -2136,9 +2193,15 @@ function ordShip(){
  const предупреждение=c.ok?'':'\n\nМатериалов не хватает: '+
    c.мало.slice(0,5).map(x=>x.m.n+' — надо '+qfmt(x.надо)+', есть '+qfmt(x.есть)).join('; ')+
    (c.мало.length>5?' и ещё '+(c.мало.length-5):'')+'\nСписать всё равно можно, но остаток уйдёт в минус.';
- if(!confirm('Списать материалы по заказу «'+(o.n||'без названия')+'»?\n\nПозиций со склада: '+c.позиций+задвоение+предупреждение))return;
+ const своё=o.own&&(o.items||[]).length
+   ?'\n\nГотовые изделия придут на склад отдельной позицией «Готовая продукция»: '+
+    o.items.filter(x=>+x.q>0).map(x=>{const r=REC(x.rid);return (r?r.n:x.rid)+' × '+qfmt(x.q)}).slice(0,5).join(', ')+
+    ((o.items||[]).length>5?' и ещё '+((o.items||[]).length-5):'')+
+    ' — их можно будет выбрать материалом в составе другого изделия.'
+   :'';
+ if(!confirm('Списать материалы по заказу «'+(o.n||'без названия')+'»?\n\nПозиций со склада: '+c.позиций+задвоение+предупреждение+своё))return;
  const подпись=(o.own?'Для своих: ':'Заказ: ')+(o.n||'без названия');
- const запись=shipDo(строки,подпись,{oid:o.id});
+ const запись=shipDo(строки,подпись,{oid:o.id},!!o.own);
  o.ship={g:запись.g,d:запись.d};
  save();render();paint();toast('Материалы списаны')}
 function ordUnship(){
