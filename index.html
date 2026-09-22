@@ -884,6 +884,31 @@ function fgMatOf(r){
  }
  return m;
 }
+/* Сколько можно взять из партий материала и почём — без самого списания
+   (для предпросмотра себестоимости, до нажатия «Списать»). */
+function takeStock(m,amount){
+ const L=sortedLots(m).filter(l=>(+l.q||0)>0);
+ let left=amount, взято=0, стоимость=0;
+ for(const l of L){
+  if(left<=0)break;
+  const take=Math.min(+l.q||0,left);
+  стоимость+=take*(+l.p||0); left-=take; взято+=take;
+ }
+ return {взято,стоимость};
+}
+/* Себестоимость n штук изделия r, если списывать прямо сейчас. Обычный
+   заказ клиенту сначала берёт готовую продукцию со склада (осталась от
+   заказа «для своих») — и только недостающее считает заново из состава.
+   Заказ «для своих» сам эту продукцию производит, его эта логика не
+   касается — считаем как раньше, по составу. */
+function itemShipCost(r,n,own){
+ if(!r||!(n>0))return 0;
+ if(own)return calc(r).cost*n;
+ const fgm=MAT('fg::'+r.id);
+ const {взято,стоимость}=fgm?takeStock(fgm,n):{взято:0,стоимость:0};
+ const остаток=n-взято;
+ return стоимость+(остаток>0?calc(r).cost*остаток:0);
+}
 const isPH=m=>/^(нет|-|—)$/i.test(String(m.n||'').trim());
 function nice(t){t=String(t||'').trim(); if(NICE[t])return NICE[t];
  if(t===t.toUpperCase()&&t.length>3)t=t[0]+t.slice(1).toLowerCase();
@@ -1644,18 +1669,48 @@ function shipCheck(строки){
    own=true — заказ «для своих целей»: сверх обычного списания сырья каждое
    готовое изделие приходуется на склад отдельной позицией (см. fgMatOf). */
 function shipDo(строки,подпись,extra,own){
- const {need}=shipUsage(строки);
- let cost=0, штук=0;
+ let штук=0;
+ for(const x of строки){ if(x.rid) штук+=(+x.q||0) }
+
+ /* Обычный заказ клиенту: сначала берём готовую продукцию со склада (осталась
+    от заказа «для своих»), и только недостающее количество делаем заново из
+    сырья — без лишней галочки, автоматически. Заказ «для своих» эту логику
+    не использует: он сам производит то, что приходует на склад. */
+ const строкиИзСырья=[];
+ const fgUse=[];
+ let costFg=0;
+ for(const x of строки){
+  if(!x.rid){ строкиИзСырья.push(x); continue }
+  let n=+x.q||0;
+  if(!own&&n>0){
+   const r=REC(x.rid);
+   const fgm=r?MAT('fg::'+r.id):null;
+   if(fgm&&stockOf(fgm)>0){
+    const {взято,стоимость}=takeStock(fgm,n);
+    if(взято>0){
+     consume(fgm,взято);
+     fgUse.push({id:fgm.id,n:fgm.n,q:взято});
+     costFg+=стоимость; n-=взято;
+    }
+   }
+  }
+  if(n>0) строкиИзСырья.push({rid:x.rid,q:n});
+ }
+
+ const {need}=shipUsage(строкиИзСырья);
+ let cost=costFg;
  const acc={opr:0,ohr:0};
  const fgAdd=[];
- for(const x of строки){
+ for(const x of строкиИзСырья){
   if(!x.rid)continue;
   const r=REC(x.rid); if(!r)continue;
-  const n=+x.q||0; штук+=n;
+  const n=+x.q||0;
   const c=calc(r);
   cost+=c.cost*n;
   /* ОПР и ОХР списываются в ведомости общей суммой с каждого изделия —
-     ровно теми двумя строками, что начислены в расчёте. */
+     ровно теми двумя строками, что начислены в расчёте. С готовой
+     продукции, взятой со склада, они не начисляются повторно — уже
+     начислены при её выпуске. */
   for(const y of c.det){ if(y.k==='k'&&y.acc) acc[y.acc]+=(+y.c||0)*n }
   if(own&&n>0)fgAdd.push({r,n,p:c.cost});
  }
@@ -1679,7 +1734,7 @@ function shipDo(строки,подпись,extra,own){
  }
  const запись=Object.assign({g:logKey(),t:'make',d:Date.now(),n:подпись,q:штук,
    cost:rnd(cost,2),base:costBase(),use,acc:{opr:rnd(acc.opr,2),ohr:rnd(acc.ohr,2)}},
-   extra||{},fg.length?{fg}:{});
+   extra||{},fg.length?{fg}:{},fgUse.length?{fgUse}:{});
  S.log.unshift(запись);
  return запись;
 }
@@ -1900,12 +1955,15 @@ function logUndoInfo(e){
   if(блок)return {ok:false,why:'Отменить нельзя: '+блок+'. Сначала уберите её из того изделия.'};
   const назад=(e.use||[]).filter(u=>MAT(u.id));
   const своё=(e.fg||[]).filter(f=>MAT(f.id));
+  const состкла=(e.fgUse||[]).filter(u=>MAT(u.id));
   return {ok:true,kind:'make',
    what:назад.length?'Материалы вернутся на склад: '+назад.map(u=>{const m=MAT(u.id);
      return m.n+' '+qfmt(u.q)+' '+baseOf(m)}).slice(0,6).join(', ')+(назад.length>6?' и ещё '+(назад.length-6):'')
     :'Эта запись сделана до того, как приложение стало запоминать расход, — на складе она ничего не изменит.'
    +(своё.length?'\nГотовая продукция уйдёт со склада обратно: '+
-     своё.map(f=>f.n+' × '+qfmt(f.q)).join(', '):'')};
+     своё.map(f=>f.n+' × '+qfmt(f.q)).join(', '):'')
+   +(состкла.length?'\nГотовая продукция вернётся на склад (была взята оттуда вместо нового производства): '+
+     состкла.map(u=>{const m=MAT(u.id); return m.n+' '+qfmt(u.q)}).join(', '):'')};
  }
  if(e.t==='buy'){
   const m=MAT(e.id);
@@ -1926,6 +1984,10 @@ function logUndo(g){
  if(!confirm(заголовок+'\n'+когда+'\n\n'+info.what+'\n\nОтменить это будет нельзя — запись придётся завести заново.'))return;
  if(e.t==='make'){
   for(const u of (e.use||[])){
+   const m=MAT(u.id); if(!m)continue;
+   restoreStock(m,+u.q||0);
+  }
+  for(const u of (e.fgUse||[])){
    const m=MAT(u.id); if(!m)continue;
    restoreStock(m,+u.q||0);
   }
@@ -2046,7 +2108,7 @@ function orderSum(o){return o&&o.own?0:orderItemsSum(o)}
    входит, поэтому задвоения здесь нет. */
 function orderCost(o){
  let c=0;
- for(const x of (o.items||[])){const r=REC(x.rid); if(r)c+=calc(r).cost*(+x.q||0)}
+ for(const x of (o.items||[])){const r=REC(x.rid); if(r)c+=itemShipCost(r,(+x.q||0),!!o.own)}
  for(const x of (o.pack||[])){const m=MAT(x.mid); if(m)c+=matPrice(m)*(+x.q||0)}
  return rnd(c,2);
 }
