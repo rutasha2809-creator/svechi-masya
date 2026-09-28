@@ -543,9 +543,23 @@ async function sbLogin(email,password,name){
   body:JSON.stringify({email:String(email||'').trim(),password:String(password||'')})});
  const j=await r.json().catch(()=>({}));
  if(!r.ok||!j.access_token) throw new Error(j.error_description||j.msg||j.error||'Не удалось войти');
- AU={access_token:j.access_token,refresh_token:j.refresh_token,
+ AU={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user&&j.user.id,
      expires_at:Date.now()+((j.expires_in||3600)*1000),email:j.user&&j.user.email,name:(name||'').trim()||'мастер'};
  authSave(); MODE='cloud'; lsSet(MKEY,'cloud'); return AU;
+}
+/* Регистрация: новый пользователь получает СВОЮ, пустую базу — общих данных
+   не видит и не затрагивает. Если у проекта включено подтверждение почты,
+   сессии в ответе не будет — тогда просим проверить почту и войти отдельно. */
+async function sbSignup(email,password,name){
+ const r=await fetch(SB.url+'/auth/v1/signup',{method:'POST',
+  headers:{apikey:SB.key,'Content-Type':'application/json'},
+  body:JSON.stringify({email:String(email||'').trim(),password:String(password||'')})});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok) throw new Error(j.error_description||j.msg||j.error||'Не удалось зарегистрироваться');
+ if(!j.access_token) return {confirmNeeded:true};
+ AU={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user&&j.user.id,
+     expires_at:Date.now()+((j.expires_in||3600)*1000),email:j.user&&j.user.email,name:(name||'').trim()||'мастер'};
+ authSave(); MODE='cloud'; lsSet(MKEY,'cloud'); return {confirmNeeded:false};
 }
 async function sbRefresh(){
  if(!AU||!AU.refresh_token)return false;
@@ -555,12 +569,25 @@ async function sbRefresh(){
  const j=await r.json().catch(()=>({}));
  if(!r.ok||!j.access_token){AU=null;authSave();return false}
  AU=Object.assign(AU,{access_token:j.access_token,refresh_token:j.refresh_token,
-  expires_at:Date.now()+((j.expires_in||3600)*1000)});
+  expires_at:Date.now()+((j.expires_in||3600)*1000)},j.user&&j.user.id?{uid:j.user.id}:{});
  authSave(); return true;
+}
+/* Сессии, сохранённые ДО того, как в них стал записываться uid пользователя
+   (правка про отдельные базы у каждого), его не знают — иначе синхронизация
+   для них молча остановится. Подтягиваем uid один раз, без выхода из базы. */
+async function ensureUid(){
+ if(AU&&!AU.uid){
+  try{
+   const r=await sbFetch('/auth/v1/user');
+   const j=await r.json().catch(()=>({}));
+   if(r.ok&&j.id){AU.uid=j.id; authSave()}
+  }catch(e){}
+ }
 }
 async function ensureToken(){
  if(!AU)return false;
- if(Date.now()>AU.expires_at-60000) return await sbRefresh();
+ if(Date.now()>AU.expires_at-60000){ if(!await sbRefresh())return false }
+ if(!AU.uid) await ensureUid();
  return true;
 }
 function sbLogout(){AU=null;authSave();MODE=null;lsDel(MKEY);stopPoll()}
@@ -568,7 +595,7 @@ function sbLogout(){AU=null;authSave();MODE=null;lsDel(MKEY);stopPoll()}
 /* ---- неотправленные правки ----
    Правка сначала ложится в этот браузер, в облако уходит через 1,2 с.
    Если страницу закрыли или обновили раньше — правка осталась только здесь,
-   и следующий запуск, слепо забрав общую базу, её бы стёр (так «воскресло»
+   и следующий запуск, слепо забрав сохранённое, его бы стёр (так «воскресло»
    удалённое изделие). Поэтому помним: есть ли неотправленное и на какой
    версии базы мы остановились. */
 function syncMark(dirty,ver){
@@ -579,27 +606,35 @@ function syncState(){try{return JSON.parse(lsGet(SKEY)||'null')||{dirty:false,ve
 
 /* ---- чтение ---- */
 async function cloudPull(silent){
- if(MODE!=='cloud'||!AU)return null;
+ if(MODE!=='cloud'||!AU||!AU.uid)return null;
  if(!await ensureToken())return null;
  try{
-  const r=await sbFetch('/rest/v1/app_state?id=eq.1&select=data,version,updated_at,updated_by');
+  const r=await sbFetch('/rest/v1/app_state?owner_id=eq.'+AU.uid+'&select=data,version,updated_at,updated_by');
   if(!r.ok)throw new Error('код '+r.status);
   const rows=await r.json();
   CL.err=null; CL.online=true;
-  if(!rows.length)return null;
+  if(!rows.length)return {isNew:true};   // своей строки в базе ещё нет — новый пользователь
   const row=rows[0];
   CL.at=row.updated_at; CL.by=row.updated_by;
   return {data:row.data,version:row.version};
- }catch(e){CL.err=e.message;CL.online=navigator.onLine;if(!silent)toast('Нет связи с общей базой');return null}
+ }catch(e){CL.err=e.message;CL.online=navigator.onLine;if(!silent)toast('Нет связи с базой');return null}
+}
+/* Заводит первую строку нового пользователя. */
+async function cloudCreateRow(data){
+ const body={owner_id:AU.uid,data,version:1,updated_at:new Date().toISOString(),updated_by:whoAmI()};
+ const r=await sbFetch('/rest/v1/app_state',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});
+ if(!r.ok)throw new Error('код '+r.status);
+ const rows=await r.json();
+ return rows[0];
 }
 /* ---- запись с защитой от затирания ---- */
 async function cloudPush(force){
- if(MODE!=='cloud'||!AU)return;
+ if(MODE!=='cloud'||!AU||!AU.uid)return;
  if(CL.busy){CL.again=true;return}
  CL.busy=true;
  try{
   if(!await ensureToken()){CL.busy=false;return}
-  // страховка: пустая локальная копия не затирает непустую общую базу
+  // страховка: пустая локальная копия не затирает непустые сохранённые данные
   const localEmpty=!((S.materials||[]).length||(S.recipes||[]).length);
   if(localEmpty&&!force){
    const cur=await cloudPull(true);
@@ -610,7 +645,7 @@ async function cloudPush(force){
   let expect=CL.ver;
   if(force){const cur=await cloudPull(true); expect=cur?cur.version:CL.ver}
   const body={data:S,version:expect+1,updated_at:new Date().toISOString(),updated_by:whoAmI()};
-  const r=await sbFetch('/rest/v1/app_state?id=eq.1&version=eq.'+expect,
+  const r=await sbFetch('/rest/v1/app_state?owner_id=eq.'+AU.uid+'&version=eq.'+expect,
    {method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});
   if(!r.ok)throw new Error('код '+r.status);
   const rows=await r.json();
@@ -635,10 +670,10 @@ function cloudFlush(){
 }
 /* ---- лёгкая проверка: только номер версии, без данных ---- */
 async function cloudVersion(){
- if(MODE!=='cloud'||!AU)return null;
+ if(MODE!=='cloud'||!AU||!AU.uid)return null;
  if(!await ensureToken())return null;
  try{
-  const r=await sbFetch('/rest/v1/app_state?id=eq.1&select=version,updated_at,updated_by');
+  const r=await sbFetch('/rest/v1/app_state?owner_id=eq.'+AU.uid+'&select=version,updated_at,updated_by');
   if(!r.ok)throw new Error('код '+r.status);
   const rows=await r.json(); CL.err=null; CL.online=true;
   return rows.length?rows[0]:null;
@@ -689,22 +724,34 @@ async function cloudBoot(){
 async function cloudFirstSync(){
  const cur=await cloudPull(false);
  if(!cur){toast('Нет связи с базой');return false}
- CL.ver=cur.version;
- const cloudEmpty=!cur.data||!cur.data.materials||(!cur.data.materials.length&&!cur.data.recipes.length);
  const localHas=S&&((S.materials||[]).length||(S.recipes||[]).length);
- if(cloudEmpty&&localHas){
-  if(confirm('Общая база пустая. Загрузить в неё то, что уже заведено на этом устройстве?')){await cloudPush(true);toast('Данные выгружены в общую базу')}
-  else{S=fresh();save(true);await cloudPush(true)}
- }else if(!cloudEmpty){
-  if(localHas&&!confirm('В общей базе уже есть данные. Взять их? Локальные правки этого устройства будут заменены.\n\nОтмена — оставить локальные и перезаписать общую базу.')){
-   await cloudPush(true); toast('Общая база перезаписана вашей версией');
-  }else{
-   S=cur.data; S.settings=Object.assign({},DEF_SET,S.settings||{}); save(true); toast('Данные загружены из общей базы');
+ if(cur.isNew){
+  /* Совсем новый пользователь (например, только что зарегистрировался) —
+     своей строки в базе ещё нет, заводим её: пустую, либо с тем, что уже
+     успели ввести на этом устройстве до входа. */
+  const initial=localHas?S:fresh();
+  try{
+   const row=await cloudCreateRow(initial);
+   CL.ver=row.version; CL.at=row.updated_at; CL.by=row.updated_by;
+   S=initial; S.settings=Object.assign({},DEF_SET,S.settings||{}); save(true);
+  }catch(e){toast('Не удалось завести вашу базу: '+e.message);return false}
+ }else{
+  CL.ver=cur.version;
+  const cloudEmpty=!cur.data||!cur.data.materials||(!cur.data.materials.length&&!cur.data.recipes.length);
+  if(cloudEmpty&&localHas){
+   if(confirm('У вас пока нет сохранённых данных. Загрузить то, что уже есть на этом устройстве?')){await cloudPush(true);toast('Данные сохранены')}
+   else{S=fresh();save(true);await cloudPush(true)}
+  }else if(!cloudEmpty){
+   if(localHas&&!confirm('У вас уже есть сохранённые данные. Взять их? Локальные правки этого устройства будут заменены.\n\nОтмена — оставить локальные и заменить сохранённые.')){
+    await cloudPush(true); toast('Сохранено то, что было на этом устройстве');
+   }else{
+    S=cur.data; S.settings=Object.assign({},DEF_SET,S.settings||{}); save(true); toast('Данные загружены');
+   }
   }
  }
  startPoll(); syncMark(false,CL.ver); bkAuto(); return true;
 }
-/* ---- резервные копии в общей базе (таблица app_backups) ---- */
+/* ---- резервные копии в аккаунте (таблица app_backups) ---- */
 const BK_KEEP=14;
 async function bkList(){
  if(MODE!=='cloud'||!AU)return null;
@@ -750,7 +797,7 @@ async function bkData(id){
  }catch(e){toast('Копия не читается: '+e.message);return null}
 }
 async function bkRestore(id){
- if(!confirm('Взять эту копию? То, что сейчас в общей базе, будет заменено.'))return;
+ if(!confirm('Взять эту копию? То, что сейчас сохранено, будет заменено.'))return;
  const row=await bkData(id); if(!row)return;
  const o=row.data;
  if(!o||!o.materials||!o.recipes){toast('Копия не читается');return}
@@ -1899,11 +1946,11 @@ const HELP=[
   <b>Закупка</b> удалит свою партию и уменьшит остаток. Закупку, из которой уже списывали, удалить нельзя: сначала отмените списания.<br><br>
   Отменить списание по заказу можно и из самого заказа — ссылка «отменить списание».`],
 
- ['Общая база и копии', `
-  В общей базе все участники видят одни и те же данные: внесли закупку — остаток обновился у всех. Чужие правки подтягиваются раз в 20 секунд.<br><br>
-  Если двое сохранили одновременно, приложение не станет затирать ничью версию молча — покажет выбор «Оставить мои» или «Взять из базы».<br><br>
-  <b>Копии.</b> Раз в сутки при первом открытии состояние сохраняется в общую базу, хранятся последние 14. Список — под шестерёнкой в правом верхнем углу, любую копию можно посмотреть и восстановить. Там же «Скачать базу» — файл на свой компьютер.<br><br>
-  Без сети приложение работает на локальной копии и догонит базу, когда связь вернётся.`],
+ ['Аккаунт и копии', `
+  Данные сохраняются в вашем аккаунте и синхронизируются между вашими устройствами — правки подтягиваются раз в 20 секунд.<br><br>
+  Если сохранили одновременно с двух устройств, приложение не станет затирать правку молча — покажет выбор «Оставить мои» или «Взять сохранённое».<br><br>
+  <b>Копии.</b> Раз в сутки при первом открытии состояние сохраняется отдельной копией, хранятся последние 14. Список — под шестерёнкой в правом верхнем углу, любую копию можно посмотреть и восстановить. Там же «Скачать базу» — файл на свой компьютер.<br><br>
+  Без сети приложение работает на локальной копии и досохранится, когда связь вернётся.`],
 ];
 function helpView(){
  return head('Инструкция','Как приложение считает')+`<div class="wrap" style="padding-top:12px">
@@ -2603,7 +2650,7 @@ function expCSV(what){let rows;
 function clearAll(){
  const shared=MODE==='cloud';
  if(!confirm(shared
-  ? 'ВНИМАНИЕ: вы подключены к общей базе.\n\nОчистка удалит материалы, изделия и историю У ВСЕХ. Отменить нельзя — сначала скачайте копию базы.\n\nПродолжить?'
+  ? 'ВНИМАНИЕ: очистка удалит все ваши материалы, изделия и историю. Отменить нельзя — сначала скачайте копию базы.\n\nПродолжить?'
   : 'Удалить все материалы, изделия и историю? Отменить это будет нельзя — сначала скачайте копию базы.'))return;
  if(!confirm(shared?'Точно очистить ОБЩУЮ базу для всех?':'Точно? Приложение станет полностью пустым.'))return;
  onlyUsed=false;
@@ -2666,23 +2713,23 @@ function createRecipe(){
 function syncBadge(){
  const el=document.getElementById('hpill'); if(!el)return;
  if(MODE!=='cloud'){el.textContent=S.recipes.length+' изделий';el.className='pill';return}
- let t='общая база',c='pill';
+ let t='сохранено',c='pill';
  if(CL.wipe||CL.conflict){t='нужно решить';c='pill warn'}
  else if(CL.err||!navigator.onLine){t='нет связи';c='pill warn'}
  else if(CL.busy||pushTimer){t='сохраняю…'}
- else{t='общая база ✓'}
+ else{t='сохранено ✓'}
  el.textContent=t; el.className=c;
  const cb=document.getElementById('conflict-bar');
  if(cb){
   cb.style.display=(CL.conflict||CL.wipe)?'':'none';
   const inner=document.getElementById('conflict-in');
-  if(inner&&CL.wipe)inner.innerHTML=`<b>Здесь пусто, а в общей базе есть данные.</b>
+  if(inner&&CL.wipe)inner.innerHTML=`<b>Здесь пусто, а в вашем аккаунте уже есть данные.</b>
     Ничего не перезаписала — иначе работа коллег пропала бы.
     <div class="row" style="gap:8px;margin-top:8px">
       <button class="btn sm2" onclick="cloudResolve(false)">Загрузить из базы</button>
-      <button class="btn g sm2" onclick="if(confirm('Очистить общую базу для всех? Отменить будет нельзя.')){CL.wipe=false;cloudPush(true).then(()=>{syncBadge();toast('База очищена')})}">Всё равно очистить</button>
+      <button class="btn g sm2" onclick="if(confirm('Очистить всё? Отменить будет нельзя.')){CL.wipe=false;cloudPush(true).then(()=>{syncBadge();toast('База очищена')})}">Всё равно очистить</button>
     </div>`;
-  else if(inner&&CL.conflict)inner.innerHTML=`<b>Кто-то сохранил раньше вас.</b> Ваши правки ещё не в общей базе.
+  else if(inner&&CL.conflict)inner.innerHTML=`<b>Есть более новая версия — с другого устройства.</b> Ваши правки ещё не сохранены.
     <div class="row" style="gap:8px;margin-top:8px">
       <button class="btn sm2" onclick="cloudResolve(true)">Оставить мои</button>
       <button class="btn g sm2" onclick="cloudResolve(false)">Взять из базы</button>
@@ -2702,9 +2749,10 @@ function gateShow(){
 }
 function gateChoose(){
  document.getElementById('gate-body').innerHTML=`
-  <button class="btn full" style="margin-bottom:10px" onclick="gateLogin()">Войти в общую базу</button>
+  <button class="btn full" style="margin-bottom:10px" onclick="gateLogin()">Войти</button>
+  <button class="btn g full" style="margin-bottom:10px" onclick="gateSignup()">Зарегистрироваться</button>
   <button class="btn g full" onclick="gateLocal()">Работать только на этом устройстве</button>
-  <p class="xs mut" style="margin-top:14px;line-height:1.5">В общей базе все видят одни и те же данные: внесли закупку — остаток обновился у всех. Локально — данные никуда не уходят и остаются только в этом браузере.</p>`;
+  <p class="xs mut" style="margin-top:14px;line-height:1.5">Уже есть аккаунт — войдите. Ещё нет — зарегистрируйтесь, и данные будут сохраняться для вас. «Только на этом устройстве» — без аккаунта, данные останутся в этом браузере.</p>`;
 }
 function gateLogin(){
  document.getElementById('gate-body').innerHTML=`
@@ -2727,12 +2775,46 @@ async function doGateLogin(){
  try{
   await sbLogin(mail,pass,name);
   const ok=await cloudFirstSync();
-  if(!ok)throw new Error('Не удалось прочитать общую базу');
+  if(!ok)throw new Error('Не удалось прочитать базу');
   document.getElementById('gate').style.display='none';
   render(); syncBadge();
  }catch(e){
   err.textContent=/invalid/i.test(e.message)?'Неверная почта или пароль':e.message;
   btn.disabled=false; btn.textContent='Войти';
+ }
+}
+/* ---- регистрация нового аккаунта ---- */
+function gateSignup(){
+ document.getElementById('gate-body').innerHTML=`
+  <label class="f"><span>Ваше имя</span><input id="g-name" placeholder="Как подписывать правки"></label>
+  <label class="f"><span>Почта</span><input id="g-mail" type="email" autocomplete="username" placeholder="team@..."></label>
+  <label class="f"><span>Пароль</span><input id="g-pass" type="password" autocomplete="new-password" placeholder="не меньше 6 символов"></label>
+  <div id="g-err" class="sm" style="color:var(--bad);min-height:18px;margin-bottom:8px"></div>
+  <button class="btn full" id="g-go" onclick="doGateSignup()">Зарегистрироваться</button>
+  <button class="btn g full" style="margin-top:10px" onclick="gateChoose()">Назад</button>`;
+ setTimeout(()=>{const e=document.getElementById('g-mail');if(e)e.focus()},60);
+ const go=()=>doGateSignup();
+ ['g-mail','g-pass'].forEach(i=>{const e=document.getElementById(i);if(e)e.onkeydown=ev=>{if(ev.key==='Enter')go()}});
+}
+async function doGateSignup(){
+ const btn=document.getElementById('g-go'), err=document.getElementById('g-err');
+ const name=document.getElementById('g-name').value, mail=document.getElementById('g-mail').value, pass=document.getElementById('g-pass').value;
+ if(!mail||!pass){err.textContent='Введите почту и пароль';return}
+ btn.disabled=true; btn.textContent='Регистрирую…'; err.textContent='';
+ try{
+  const res=await sbSignup(mail,pass,name);
+  if(res.confirmNeeded){
+   document.getElementById('gate-body').innerHTML=`<p class="sm" style="line-height:1.5">Мы отправили письмо на <b>${esc(mail)}</b>. Перейдите по ссылке из письма, затем войдите обычным способом.</p>
+    <button class="btn full" style="margin-top:14px" onclick="gateLogin()">Войти</button>`;
+   return;
+  }
+  const ok=await cloudFirstSync();
+  if(!ok)throw new Error('Не удалось завести вашу базу');
+  document.getElementById('gate').style.display='none';
+  render(); syncBadge();
+ }catch(e){
+  err.textContent=/already registered|already exists/i.test(e.message)?'Такая почта уже зарегистрирована':e.message;
+  btn.disabled=false; btn.textContent='Зарегистрироваться';
  }
 }
 /* ---- восстановление пароля ---- */
@@ -2807,17 +2889,17 @@ async function doNewPass(){
 function gateLocal(){MODE='local';lsSet(MKEY,'local');document.getElementById('gate').style.display='none';render();syncBadge()}
 function cloudResolve(mine){
  CL.conflict=false; CL.wipe=false;
- if(mine){cloudPush(true).then(()=>{toast('Ваша версия сохранена в общей базе');syncBadge()})}
+ if(mine){cloudPush(true).then(()=>{toast('Ваша версия сохранена');syncBadge()})}
  else{cloudPull(false).then(cur=>{if(cur){CL.ver=cur.version;S=cur.data;S.settings=Object.assign({},DEF_SET,S.settings||{});
-   save(true);syncMark(false,CL.ver);closeAll();render();syncBadge();toast('Загружена версия из общей базы')}})}
+   save(true);syncMark(false,CL.ver);closeAll();render();syncBadge();toast('Загружена сохранённая версия')}})}
 }
-/* Служебное: данные приложения, резервная копия и общая база. Мастеру это
+/* Служебное: данные приложения, резервная копия и аккаунт. Мастеру это
    не нужно каждый день, поэтому живёт под шестерёнкой в шапке, а не во вкладке.
    В мобильном приложении раздел, скорее всего, уберут совсем. */
 function openAdmin(){closeAll();push(adminView)}
 function adminView(){
  setTimeout(renderBk,0);
- return head('Служебное','Данные, копии и общая база')+`<div class="wrap" style="padding-top:12px">
+ return head('Служебное','Данные, копии и аккаунт')+`<div class="wrap" style="padding-top:12px">
   <div class="card">
     <h3 style="margin-bottom:8px">Данные приложения</h3>
     ${dataBoxHtml()}
@@ -2835,7 +2917,7 @@ function adminView(){
     </div>
   </div>
   <div class="card">
-    <h3 style="margin-bottom:8px">Общая база</h3>
+    <h3 style="margin-bottom:8px">Аккаунт</h3>
     ${cloudBoxHtml()}
   </div>
  </div>`;
@@ -2846,8 +2928,8 @@ function renderCloudCard(){
 }
 function cloudBoxHtml(){
  if(MODE!=='cloud'){
-  return `<p class="sm mut" style="margin:0 0 12px">Сейчас данные хранятся только в этом браузере. Подключитесь к общей базе, чтобы работать вместе — правки будут видны всем.</p>
-   <button class="btn full" onclick="gateShow();gateLogin()">Подключиться к общей базе</button>`;
+  return `<p class="sm mut" style="margin:0 0 12px">Сейчас данные хранятся только в этом браузере. Войдите, чтобы данные не пропали и были на всех ваших устройствах.</p>
+   <button class="btn full" onclick="gateShow();gateLogin()">Войти</button>`;
  }
  return `<div class="row sm" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">
    <span class="tag ${CL.err?'bad':'ok'}">${CL.err?'нет связи':'подключено'}</span>
@@ -2856,7 +2938,7 @@ function cloudBoxHtml(){
   </div>
   <div class="grid2">
    <button class="btn g" onclick="cloudPoll().then(()=>{renderCloudCard();toast('Проверено')})">Обновить сейчас</button>
-   <button class="btn d" onclick="if(confirm('Выйти из общей базы? Данные останутся в этом браузере.')){sbLogout();render();syncBadge();renderCloudCard()}">Выйти</button>
+   <button class="btn d" onclick="if(confirm('Выйти? Данные останутся в этом браузере.')){sbLogout();render();syncBadge();renderCloudCard()}">Выйти</button>
   </div>
   <div class="hsep" style="margin:12px 0"></div>
   <div class="row" style="margin-bottom:8px"><h3 class="sm">Копии базы</h3><span class="sp"></span>
