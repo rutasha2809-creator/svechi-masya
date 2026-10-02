@@ -1063,7 +1063,7 @@ function renderProd(){
   `<div class="chip ${c===fProd?'on':''}" onclick="fProd=${jq(c)};renderProd()">${esc(c)}</div>`).join('');
  const q=(document.getElementById('q-prod').value||'').toLowerCase();
  const anyStock=S.materials.some(m=>stockOf(m)>0);
- const rows=S.recipes.filter(r=>(fProd==='все'||r.c===fProd)&&r.n.toLowerCase().includes(q));
+ const rows=S.recipes.filter(r=>(fProd==='все'||r.c===fProd)&&r.n.toLowerCase().includes(q)).sort(byName);
  if(!S.recipes.length){
   document.getElementById('chips-prod').innerHTML='';
   document.getElementById('list-prod').innerHTML=`<div class="card">
