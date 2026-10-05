@@ -336,15 +336,24 @@ function derive(r){
     const net = raw? rnd(raw/(pc+100)*100,0) : 0;
     d['waxRaw_'+Sx]=raw; d['waxNet_'+Sx]=net; d['fragrMass_'+Sx]=raw-net;
   }
-  let g=0;
+  let g=0, gm=null;
   for(const l of r.l){
     if(l.q && l.q.type==='gypsumMass'){
-      const m=MAT(l.m); const coef=(m&&m.x&&m.x.coef)||1.65;
+      gm=MAT(l.m); const coef=(gm&&gm.x&&gm.x.coef)||1.65;
       const vk=l.q.volKey||'volGypsum_A';
       g = coef*(+p[vk]||+p.volGypsum_A||+p.volWax_A||0);
     }
   }
-  d.gypsum=g; d.water=rnd(g*0.25,0);
+  /* Проценты воды, диоксида титана, СВВ и красителя берутся из карточки
+     той смеси, что выбрана в строке «гипс» — своя рецептура у каждого
+     вида гипса. Вода по умолчанию 25 % (как было раньше), остальные — 0,
+     пока владелец не укажет свои в карточке материала.                 */
+  const gx=(gm&&gm.x)||{};
+  d.gypsum=g;
+  d.water=rnd(g*(gx.water!=null?gx.water:25)/100,0);
+  d.tio2=rnd(g*(gx.tio2||0)/100,0);
+  d.svv=rnd(g*(gx.svv||0)/100,0);
+  d.dye=rnd(g*(gx.dye||0)/100,0);
   return d;
 }
 
@@ -371,6 +380,9 @@ function calc(r,mode){
     else if(q.type==='param') v=+(d[q.key]!=null?d[q.key]:(p[q.key]||0));
     else if(q.type==='gypsumMass') v=d.gypsum;
     else if(q.type==='water') v=d.water;
+    else if(q.type==='tio2') v=d.tio2;
+    else if(q.type==='svv') v=d.svv;
+    else if(q.type==='dye') v=d.dye;
     else if(q.type==='pct'){
       let b=q.base, bv;
       if(d[b]!=null) bv=d[b];
@@ -836,7 +848,10 @@ const QTYRULES=[
  {v:'p:fragrMass_A',n:'Вся масса отдушки'},
  {v:'p:wickLen_A',n:'Длина фитиля'},
  {v:'gypsumMass',n:'Вся масса гипса'},
- {v:'water',n:'Вода (25 % от гипса)'},
+ {v:'water',n:'Вода (% от гипса, из карточки смеси)'},
+ {v:'tio2',n:'Диоксид титана (% от гипса, из карточки смеси)'},
+ {v:'svv',n:'СВВ (% от гипса, из карточки смеси)'},
+ {v:'dye',n:'Краситель (% от гипса, из карточки смеси)'},
  {v:'%waxNet_A',n:'Процент от массы воска'},
  {v:'%gypsum',n:'Процент от массы гипса'},
 ];
@@ -1274,6 +1289,7 @@ function lineView(row){
  let cur='const';
  if(q.type==='param')cur='p:'+q.key; else if(q.type==='pct')cur=(q.base==='gypsum'?'%gypsum':'%waxNet_A');
  else if(q.type==='gypsumMass')cur='gypsumMass'; else if(q.type==='water')cur='water';
+ else if(q.type==='tio2')cur='tio2'; else if(q.type==='svv')cur='svv'; else if(q.type==='dye')cur='dye';
  return head(nice(l.lb),D.n)+`<div class="wrap" style="padding-top:12px"><div class="card">
   <label class="f"><span>Что это в изделии</span><input id="e-lb" value="${esc(nice(l.lb))}" onchange="D.l.find(x=>x.r===${row}).lb=this.value.trim()||'строка'"></label>
   <label class="f"><span>Материал</span></label>
@@ -1469,7 +1485,16 @@ function matView(id){
   <label class="f"><span>Предупреждать, когда остаток ниже</span><input id="m-min" type="number" step="any" value="${m.min||0}"></label>
   ${m.g==='gypsum'?`<label class="f"><span>Коэффициент смеси</span>
     <input id="m-coef" type="number" step="0.01" value="${(m.x&&m.x.coef)||1.65}"></label>
-   <p class="xs mut" style="margin:-4px 0 12px">Сколько граммов смеси уходит на 1 мл формы. СКУЛЬПТОР — 1,65, жидкая керамика — 1,75, фрипласт — 1,8, акрил — 1,95. По нему считается масса гипса в изделии, а вода — 25 % от неё.</p>`:''}
+   <p class="xs mut" style="margin:-4px 0 12px">Сколько граммов смеси уходит на 1 мл формы. СКУЛЬПТОР — 1,65, жидкая керамика — 1,75, фрипласт — 1,8, акрил — 1,95. По нему считается масса гипса в изделии.</p>
+   <label class="f"><span>Вода, % от массы гипса</span>
+    <input id="m-water" type="number" step="any" value="${(m.x&&m.x.water!=null)?m.x.water:25}"></label>
+   <label class="f"><span>Диоксид титана, % от массы гипса</span>
+    <input id="m-tio2" type="number" step="any" value="${(m.x&&m.x.tio2)||0}"></label>
+   <label class="f"><span>СВВ, % от массы гипса</span>
+    <input id="m-svv" type="number" step="any" value="${(m.x&&m.x.svv)||0}"></label>
+   <label class="f"><span>Краситель, % от массы гипса</span>
+    <input id="m-dye" type="number" step="any" value="${(m.x&&m.x.dye)||0}"></label>
+   <p class="xs mut" style="margin:-4px 0 12px">Эти проценты подставятся сами, когда эту смесь выберете в строке «гипс» изделия — отдельные строки воды, диоксида титана, СВВ и красителя посчитают нужное количество от массы гипса.</p>`:''}
   <button class="btn full" onclick="matSave(${jq(id)})">Сохранить</button>
  </div>
  <div class="card"><h3 class="sm" style="margin-bottom:8px">Используется в изделиях: ${used.length}</h3>
@@ -1556,7 +1581,11 @@ function matSave(id){const m=MAT(id);
   if(g('m-s'))m.s=parseFloat(g('m-s').value)||0; }
  m.min=parseFloat(g('m-min').value)||0;
  if(g('m-coef')){const k=parseFloat(g('m-coef').value);
-  m.x=m.x||{}; m.x.coef=isFinite(k)&&k>0?k:1.65}
+  m.x=m.x||{}; m.x.coef=isFinite(k)&&k>0?k:1.65;
+  const mw=parseFloat(g('m-water').value); m.x.water=isFinite(mw)&&mw>=0?mw:25;
+  const mt=parseFloat(g('m-tio2').value); m.x.tio2=isFinite(mt)&&mt>=0?mt:0;
+  const ms=parseFloat(g('m-svv').value); m.x.svv=isFinite(ms)&&ms>=0?ms:0;
+  const md=parseFloat(g('m-dye').value); m.x.dye=isFinite(md)&&md>=0?md:0}
  syncStock(m); save();toast('Сохранено');back()}
 function delMat(id){if(!confirm('Удалить материал?'))return;S.materials=S.materials.filter(m=>m.id!==id);save();back();toast('Удалён')}
 const UNITS=['г','кг','мл','л','см','м','шт','исп.'];
@@ -2702,7 +2731,10 @@ function createRecipe(){
   /* Масса гипса = коэффициент смеси × объём формы, вода = 25 % от гипса.
      Заводим обе строки сразу — останется выбрать смесь и вписать объём. */
   r.l=[{r:1,lb:'гипс',g:'gypsum',m:null,q:{type:'gypsumMass',volKey:'volGypsum_A'},fp:0,cf:'mul'},
-       {r:2,lb:'вода',g:'gypsum',m:null,q:{type:'water'},fp:0,cf:'mul'}];
+       {r:2,lb:'вода',g:'gypsum',m:null,q:{type:'water'},fp:0,cf:'mul'},
+       {r:3,lb:'диоксид титана',g:'gypsum',m:null,q:{type:'tio2'},fp:0,cf:'mul'},
+       {r:4,lb:'СВВ',g:'gypsum',m:null,q:{type:'svv'},fp:0,cf:'mul'},
+       {r:5,lb:'краситель',g:'gypsum',m:null,q:{type:'dye'},fp:0,cf:'mul'}];
   showEmpty.mat=true;   // чтобы обе строки было видно сразу, а не под «свободные слоты»
  }
  S.recipes.push(r);
