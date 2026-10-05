@@ -2274,7 +2274,19 @@ function newOrder(){
 function ORD(id){return orders().find(o=>o.id===id)}
 let ordId=null;
 function openOrder(id){ordId=id;stack=[orderView];paint()}
-function ordSet(k,v){const o=ORD(ordId);if(!o)return;o[k]=v;save();paint()}
+function ordSet(k,v){const o=ORD(ordId);if(!o)return;
+ /* Переключили «для своих» — у уже добавленных позиций цена была ценой
+    продажи, а должна стать себестоимостью (и обратно). Сам расчёт
+    себестоимости заказа (orderCost) от этого поля не зависит — это
+    только то, что видно и правится в строке позиции.                 */
+ if(k==='own'&&v!==o.own){
+  for(const it of (o.items||[])){
+   const r=REC(it.rid); if(!r)continue;
+   const cost=calc(r).cost;
+   it.price=v?cost:priceOf(r,cost);
+  }
+ }
+ o[k]=v;save();paint()}
 function ordDel(){
  const o=ORD(ordId);if(!o)return;
  if(!confirm('Удалить заказ «'+(o.n||'без названия')+'»?'))return;
@@ -2288,7 +2300,7 @@ function ordAddItems(){
    const есть=o.items.find(x=>x.rid===rid);
    if(есть){есть.q=(+есть.q||0)+1;continue}
    const {cost}=calc(r);
-   o.items.push({rid,n:r.n,q:1,price:priceOf(r,cost)});
+   o.items.push({rid,n:r.n,q:1,price:o.own?cost:priceOf(r,cost)});
   }
   save();paint();toast('Добавлено позиций: '+ids.length)})}
 function ordItemQty(rid,v){
@@ -2393,7 +2405,8 @@ function ordRefreshPrices(){
  if(!confirm('Подставить в заказ нынешние цены изделий?\n\nЦены, записанные при создании заказа, будут заменены.'))return;
  let n=0;
  for(const it of o.items){const r=REC(it.rid);if(!r)continue;
-  const p=priceOf(r,calc(r).cost); if(Math.abs(p-it.price)>0.005){it.price=p;n++}}
+  const cost=calc(r).cost, p=o.own?cost:priceOf(r,cost);
+  if(Math.abs(p-it.price)>0.005){it.price=p;n++}}
  save();paint();toast(n?'Обновлено цен: '+n:'Цены и так актуальные')}
 function orderView(){
  const o=ORD(ordId);
