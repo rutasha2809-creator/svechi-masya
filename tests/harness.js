@@ -58,7 +58,7 @@ function loadApp() {
 // рисовать при этом нечего и в облако ходить не надо.
 render=function(){};
 toast=function(t){ globalThis.__toasts.push(String(t)) };
-paint=function(){}; back=function(){}; closeAll=function(){ stack=[] };
+paint=function(){}; back=function(){}; closeAll=function(){ stack=[]; Dcalc=false };
 cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stopPoll=function(){};
 ;(function(){
   var out=globalThis;
@@ -69,6 +69,10 @@ cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stop
   out.syncStock=syncStock; out.save=save; out.allCats=allCats; out.usage=usage; out.canMake=canMake;
   Object.defineProperty(out,'buyRows',{get:function(){return buyRows},set:function(v){buyRows=v},configurable:true});
   Object.defineProperty(out,'D',{get:function(){return D},set:function(v){D=v},configurable:true});
+  out.calcs=calcs; out.dirty=dirty;
+  Object.defineProperty(out,'Dcalc',{get:function(){return Dcalc},set:function(v){Dcalc=v},configurable:true});
+  Object.defineProperty(out,'stack',{get:function(){return stack},set:function(v){stack=v},configurable:true});
+  Object.defineProperty(out,'newIsCalc',{get:function(){return newIsCalc},set:function(v){newIsCalc=v},configurable:true});
   Object.defineProperty(out,'Did',{get:function(){return Did},set:function(v){Did=v},configurable:true});
   Object.defineProperty(out,'tab_',{get:function(){return tab_},set:function(v){tab_=v},configurable:true});
   Object.defineProperty(out,'pickState',{get:function(){return pickState},set:function(v){pickState=v},configurable:true});
@@ -118,7 +122,7 @@ cloudSchedule=function(){}; syncBadge=function(){}; startPoll=function(){}; stop
     },
   };
   const els = {};
-  sandbox.window = sandbox;
+  sandbox.window = sandbox; sandbox.scrollTo = function(){};
   sandbox.globalThis = sandbox;
 
   vm.createContext(sandbox);

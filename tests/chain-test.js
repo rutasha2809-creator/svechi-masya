@@ -251,6 +251,32 @@ T.near(рп2.det.find(x => x.lb === 'вода').c, 0, 0.0001, 'вода по-п�
 смесь.x.water = undefined;
 T.near(app.calc(поднос).d.water, 124, 0.0001, 'без своего % вода возвращается к 25 % по умолчанию');
 
+T.head('Новый гипсовый материал — коэффициенты сразу при создании');
+/* Задача владельца (06.10.2026): видов гипса несколько, и все коэффициенты
+   (смесь, вода, TiO2, СВВ, краситель) нужно проставлять сразу в форме
+   «Новый материал», а не потом в карточке. */
+const экранНовогоМатериала = app.newMatView();
+T.check(/id="n-coef"/.test(экранНовогоМатериала) && /id="n-water"/.test(экранНовогоМатериала) && /id="n-tio2"/.test(экранНовогоМатериала)
+  && /id="n-svv"/.test(экранНовогоМатериала) && /id="n-dye"/.test(экранНовогоМатериала), 'в форме нового материала есть все пять полей');
+const gd = id => app.document.getElementById(id);
+gd('n-n').value = 'Фрипласт тест'; gd('n-g').value = 'gypsum'; gd('n-u').value = 'г'; gd('n-bu').value = 'г';
+gd('n-pq').value = ''; gd('n-pp').value = ''; gd('n-s').value = ''; gd('n-p').value = '';
+gd('n-coef').value = '1.8'; gd('n-water').value = '22'; gd('n-tio2').value = '4';
+gd('n-svv').value = '0.8'; gd('n-dye').value = '0.3';
+app.createMat();
+const фрип = S.materials.find(m => m.n === 'Фрипласт тест');
+T.check(!!фрип, 'гипсовый материал создан');
+T.near(фрип.x.coef, 1.8, 0.0001, 'коэффициент смеси записан при создании');
+T.near(фрип.x.water, 22, 0.0001, '% воды записан при создании');
+T.near(фрип.x.tio2, 4, 0.0001, '% TiO2 записан при создании');
+T.near(фрип.x.svv, 0.8, 0.0001, '% СВВ записан при создании');
+T.near(фрип.x.dye, 0.3, 0.0001, '% красителя записан при создании');
+
+gd('n-n').value = 'Воск тест'; gd('n-g').value = 'wax';
+app.createMat();
+const воскТест = S.materials.find(m => m.n === 'Воск тест');
+T.check(Object.keys(воскТест.x).length === 0, 'у негипсового материала коэффициенты не создаются');
+
 T.head('Шаг 10. Все экраны строятся');
 const экран = (имя, fn) => {
   try {
@@ -262,6 +288,17 @@ const экран = (имя, fn) => {
 };
 app.D = свеча; app.Did = свеча.id;
 экран('Изделия', app.renderProd);
+{
+  T.head('Список изделий — по категориям, внутри по алфавиту');
+  const сохр = app.S.recipes;
+  app.S.recipes = [{id:901,n:'Б',c:'Я-кат',l:[]},{id:902,n:'Б',c:'А-кат',l:[]},{id:903,n:'А',c:'Я-кат',l:[]},{id:904,n:'А',c:'А-кат',l:[]}];
+  app.fProd = 'все'; app.renderProd();
+  const html = app.document.getElementById('list-prod').innerHTML;
+  const поз = id => html.indexOf("openRecipe('" + id + "')");
+  const порядок = [904,902,903,901].map(поз);
+  T.check(порядок.every(x => x >= 0) && порядок[0] < порядок[1] && порядок[1] < порядок[2] && порядок[2] < порядок[3], 'сначала категория А, потом Я; внутри — по алфавиту');
+  app.S.recipes = сохр;
+}
 экран('Склад', app.renderStock);
 экран('Журнал движений', app.renderLog);
 экран('Ещё', app.renderMore);
@@ -282,6 +319,89 @@ app.D = свеча; app.Did = свеча.id;
   app.pickToggle(воск.id); app.pickToggle(коробка.id);
   return app.pickRender('Материалы');
 });
+
+T.head('Шаг 10б. Калькулятор — расчёт без списания со склада');
+{
+  const склад0 = JSON.stringify(S.materials.map(m => [m.id, m.s, (m.lots || []).map(l => l.q)]));
+  const журнал0 = (S.log || []).length;
+  const изд0 = S.recipes.length;
+  app.closeAll();
+  app.newCalc();
+  T.check(app.stack.length === 1, 'экран нового расчёта открылся');
+  const экр = app.newRecipeView();
+  T.check(экр.includes('Новый расчёт') && экр.includes('Создать расчёт'), 'на экране нового расчёта свои надписи');
+  gd('r-n').value = 'Расчёт для проверки';
+  gd('r-c').value = 'Декор';
+  app.setNewKind('wax');
+  app.createRecipe();
+  const р = (S.calcs || []).find(x => x.n === 'Расчёт для проверки');
+  T.check(!!р, 'расчёт создан и лежит в S.calcs');
+  T.check(S.recipes.length === изд0, 'в список изделий расчёт не попал');
+  T.check(!S.recipes.some(x => x.n === 'Расчёт для проверки'), 'среди изделий расчёта нет');
+  T.check(app.__toasts.includes('Расчёт создан'), 'после создания показано подтверждение');
+  T.check(app.Dcalc === true, 'карточка открыта как расчёт');
+
+  // состав из склада, цена и наценка считаются как у изделия
+  app.D.l.push({ r: 1, lb: 'воск', g: 'wax', m: воск.id, q: { type: 'const', value: 100 }, fp: 0, cf: 'mul' });
+  app.D.coef = 3;
+  const рс = app.calc(app.D);
+  T.check(рс.cost > 0, 'себестоимость расчёта считается по ценам склада: ' + рс.cost.toFixed(2));
+  T.near(app.priceOf(app.D, рс.cost), Math.ceil(рс.cost * 3 / 10) * 10, 10, 'цена продажи — себестоимость × наценка с округлением');
+  T.check(app.recipeView().includes('Сделать изделием'), 'в карточке расчёта есть «Сделать изделием»');
+  T.check(app.recipeView().includes('Удалить расчёт'), 'и «Удалить расчёт»');
+  T.check(!app.recipeView().includes('Вернуть исходный состав'), 'исходного состава из Excel у расчёта нет');
+  T.check(app.dirty(), 'правки не сохранены — карточка это видит');
+  app.saveDraft();
+  T.check(!app.dirty(), 'после «Сохранить» правок нет');
+  T.check(app.calcs().find(x => x.id === р.id).l.length === 1, 'состав расчёта сохранился в S.calcs');
+  T.check(S.recipes.every(x => x.l.length !== 1 || x.n !== 'Расчёт для проверки'), 'в изделия правки не просочились');
+
+  // сохранение и перезагрузка
+  app.save(true);
+  const после = JSON.parse(app.localStorage.getItem('masya_cost_v1'));
+  T.check((после.calcs || []).some(x => x.n === 'Расчёт для проверки'), 'расчёт сохраняется вместе с базой');
+
+  // экран «Калькулятор»
+  app.closeAll();
+  app.renderCalc();
+  const списокК = gd('list-calc').innerHTML;
+  T.check(списокК.includes('Расчёт для проверки') && списокК.includes('₽'), 'расчёт виден в списке «Калькулятора» со стоимостью');
+  app.openRecipe(р.id, true);
+  T.check(app.D.n === 'Расчёт для проверки' && app.Dcalc, 'из списка расчёт открывается');
+
+  // копия
+  app.dupRecipe();
+  T.check(app.calcs().length === 2 && S.recipes.length === изд0, 'копия расчёта создана в «Калькуляторе», изделий не прибавилось');
+  app.delRecipe();
+  T.check(app.calcs().length === 1, 'копия удалена (с вопросом)');
+
+  // сделать изделием
+  app.openRecipe(р.id, true);
+  app.calcToProduct();
+  const изд = S.recipes.find(x => x.n === 'Расчёт для проверки');
+  T.check(!!изд && S.recipes.length === изд0 + 1, 'из расчёта получилось изделие');
+  T.check(изд.id !== р.id && изд.l.length === 1 && изд.l[0].m === воск.id, 'в изделии тот же состав, новый номер');
+  T.check(app.calcs().some(x => x.id === р.id), 'сам расчёт остался в «Калькуляторе»');
+  T.check(app.Dcalc === false, 'открыто как обычное изделие');
+  T.check(app.__toasts.includes('Изделие создано'), 'показано подтверждение «Изделие создано»');
+
+  // склад и журнал не тронуты
+  const склад1 = JSON.stringify(S.materials.map(m => [m.id, m.s, (m.lots || []).map(l => l.q)]));
+  T.check(склад0 === склад1, 'остатки на складе не изменились');
+  T.check((S.log || []).length === журнал0, 'в журнале движений ничего не появилось');
+
+  // удаление расчёта
+  let спросили = 0; const был = app.confirm; app.confirm = () => { спросили++; return false; };
+  app.openRecipe(р.id, true); app.delRecipe();
+  T.check(спросили === 1 && app.calcs().some(x => x.id === р.id), 'на вопрос «Удалить?» ответили «нет» — расчёт на месте');
+  app.confirm = () => { спросили++; return true; };
+  app.delRecipe();
+  T.check(!app.calcs().some(x => x.id === р.id), 'ответили «да» — расчёт удалён');
+  T.check(S.recipes.some(x => x.n === 'Расчёт для проверки'), 'созданное из него изделие осталось');
+  app.confirm = был;
+  экран('Калькулятор', app.renderCalc);
+  app.closeAll();
+}
 
 T.head('Шаг 11. Сохранение и загрузка');
 app.save(true);
