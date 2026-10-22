@@ -356,13 +356,32 @@ function derive(r){
   /* Проценты воды, диоксида титана, СВВ и красителя берутся из карточки
      той смеси, что выбрана в строке «гипс» — своя рецептура у каждого
      вида гипса. Вода по умолчанию 25 % (как было раньше), остальные — 0,
-     пока владелец не укажет свои в карточке материала.                 */
+     пока владелец не укажет свои в карточке материала.
+
+     Сухой пигмент входит В общую массу смеси, а не добавляется сверху
+     (формула владельца, 22.10.2026): общая масса = объём × коэффициент;
+     гипс без добавок = общая / (100 + сумма процентов) × 100 (до целых);
+     добавки = общая − гипс, между ними делятся пропорционально процентам
+     (последняя добавка забирает остаток, чтобы сумма сошлась в грамм).
+     Вода — процент от общей массы смеси.                              */
   const gx=(gm&&gm.x)||{};
-  d.gypsum=g;
-  d.water=rnd(g*(gx.water!=null?gx.water:25)/100,0);
-  d.tio2=rnd(g*(gx.tio2||0)/100,0);
-  d.svv=rnd(g*(gx.svv||0)/100,0);
-  d.dye=rnd(g*(gx.dye||0)/100,0);
+  const keys=['tio2','svv','dye'];
+  const pc=keys.map(k=>Math.max(0,+gx[k]||0));
+  const P=pc.reduce((a,b)=>a+b,0);
+  d.mix=P>0?rnd(g,0):g;                       // общая масса сухой смеси
+  d.gypsum=P>0?rnd(d.mix/(100+P)*100,0):g;    // чистый гипс
+  d.water=rnd(d.mix*(gx.water!=null?gx.water:25)/100,0);
+  const adds=d.mix-d.gypsum;
+  let остаток=adds, последняя=-1;
+  pc.forEach((x,i)=>{if(x>0)последняя=i});
+  keys.forEach((k,i)=>{
+    let v=0;
+    if(P>0&&pc[i]>0){
+      v=i===последняя?остаток:rnd(adds*pc[i]/P,0);
+      остаток-=v;
+    }
+    d[k]=v;
+  });
   return d;
 }
 
@@ -371,13 +390,25 @@ function derive(r){
    Сама она никуда не делась — считается в «Ведомости по средневзвешенной»
    («Отчёты» → «Ведомость»), это отчёт для бухгалтера, на цены он не влияет. */
 function costBase(){return 'lot'}
+/* Заготовка в составе другого изделия, режим «из состава»: строка с m='rec::<id изделия>'.
+   Её цена — прямые затраты самой заготовки (без ОПР/ОХР — они начислятся один раз,
+   на итоговое изделие), расход — материалы заготовки, умноженные на количество.
+   Глубина ограничена, чтобы изделия, ссылающиеся друг на друга, не зацикливали расчёт. */
+let recDepth=0;
+const recIdOf=m=>(typeof m==='string'&&m.startsWith('rec::'))?m.slice(5):null;
 function calc(r,mode){
   mode = (mode==='avg'||mode==='lot') ? mode : costBase();
   const p=r.p||{}, d=derive(r), rowcost={}, qtys={}, det=[];
   let total=0, упаковка=0;
   for(const l of r.l){
-    const m=MAT(l.m);
-    let up = m
+    const recId=recIdOf(l.m);
+    const sub=recId?REC(recId):null;
+    let subC=null;
+    if(sub&&recDepth<4){recDepth++;try{subC=calc(sub,mode)}finally{recDepth--}}
+    const m=recId?null:MAT(l.m);
+    let up = recId
+      ? (subC?subC.cost-subC.det.filter(z=>z.k==='k').reduce((a,z)=>a+(+z.c||0),0):0)
+      : m
       ? ((mode==='avg'&&typeof avgPrice==='function')
           ? avgPrice(m)
           : ((typeof matPrice==='function')?matPrice(m):(+m.p||0)))
@@ -406,7 +437,8 @@ function calc(r,mode){
     rowcost[l.r]=c; total+=c;
     const гр = l.g || (m?m.g:null);
     if(PACK_G.has(гр)) упаковка+=c;   // войдёт в себестоимость, но не в базу процентов
-    det.push({k:'m',lb:l.lb,name:m?m.n:(l.material||'—'),unit:m?m.u:'',q:v,up,c,row:l.r,mid:l.m,g:l.g});
+    if(subC) упаковка+=(subC.упаковка||0)*v;
+    det.push({k:'m',lb:l.lb,name:recId?(sub?sub.n:'—'):(m?m.n:(l.material||'—')),unit:recId?'шт':(m?m.u:''),q:v,up,c,row:l.r,mid:l.m,g:l.g});
   }
   for(const e of r.en||[]){
     const c=(S.settings.kwt)*(+e.h||0)*(+e.kw||0);
@@ -448,10 +480,17 @@ function priceOf(r,cost){
   return st>0? Math.ceil(raw/st)*st : rnd(raw,0);
 }
 // расход материалов на 1 изделие
+let usageDepth=0;
 function usage(r){
   const {det}=calc(r), u={};
   for(const x of det){
     if(x.k!=='m'||!x.mid) continue;
+    const rid=recIdOf(x.mid);
+    if(rid){
+      const sr=REC(rid);
+      if(sr&&usageDepth<4){usageDepth++;try{const su=usage(sr);for(const id in su)u[id]=(u[id]||0)+su[id]*(x.q||0)}finally{usageDepth--}}
+      continue;
+    }
     if(x.g==='tool'||x.g==='mold_wax'||x.g==='mold_gypsum') continue;
     u[x.mid]=(u[x.mid]||0)+(x.q||0);
   }
@@ -857,7 +896,7 @@ const QTYRULES=[
  {v:'p:fragrMass_A',n:'Вся масса отдушки'},
  {v:'p:wickLen_A',n:'Длина фитиля'},
  {v:'gypsumMass',n:'Вся масса гипса'},
- {v:'water',n:'Вода (% от гипса, из карточки смеси)'},
+ {v:'water',n:'Вода (% от смеси, из карточки смеси)'},
  {v:'tio2',n:'Диоксид титана (% от гипса, из карточки смеси)'},
  {v:'svv',n:'СВВ (% от гипса, из карточки смеси)'},
  {v:'dye',n:'Краситель (% от гипса, из карточки смеси)'},
@@ -1024,6 +1063,10 @@ function pickBlocked(id){
  const x=b.find(z=>z.id===id);
  return x?(x.why||'уже есть'):null;
 }
+/* Изделие в списке выбора материалов (заготовка): ведёт себя как материал «шт». */
+function recPseudo(r){const f=MAT('fg::'+r.id);
+ return {id:'rec::'+r.id,g:'rec',n:r.n,u:'шт',p:calc(r).cost,s:f?stockOf(f):0,c:r.c,__rec:1}}
+function recById(id){const rid=recIdOf(id),r=rid?REC(rid):null;return r?recPseudo(r):null}
 function pickToggle(id){
  if(pickBlocked(id))return;
  const s=pickState.sel, i=s.indexOf(id);
@@ -1044,22 +1087,23 @@ function pickRender(title){
  const O0=pickState.opt||{};
  const огр=Array.isArray(O0.groups)&&O0.groups.length?O0.groups:null;
  const дост=groupKeys().filter(g=>S.materials.some(m=>m.g===g)&&(!огр||огр.includes(g)));
- const gs=['все',...дост];
+ const gs=['все',...дост,...(O0.withRecs?['rec']:[])];
  const q=pickState.q.toLowerCase();
  let rows=S.materials.filter(m=>!isPH(m)
    &&(!огр||огр.includes(m.g))
    &&(pickState.group==='все'||m.g===pickState.group)
    &&m.n.toLowerCase().includes(q));
+ if(O0.withRecs&&pickState.group==='rec')rows=S.recipes.filter(r=>r.id!==Did&&String(r.n).toLowerCase().includes(q)).map(recPseudo);
  rows.sort(byName);
  const total=rows.length; rows=rows.slice(0,80);
  const M=!!pickState.multi, O=pickState.opt||{}, sel=pickState.sel||[];
- const выбраны=sel.map(id=>MAT(id)).filter(Boolean);
+ const выбраны=sel.map(id=>MAT(id)||recById(id)).filter(Boolean);
  const видимые=rows.map(m=>m.id).filter(id=>!pickBlocked(id));
  const всеОтмечены=видимые.length&&видимые.every(id=>sel.includes(id));
  return head(title,M?(O.hint||'Отметьте всё, что нужно — добавится сразу'):'Найдите материал или выберите «нет»')+`<div class="wrap" style="padding-top:12px">
  <div class="srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
  <input id="pk-q" placeholder="Начните вводить название" value="${esc(pickState.q)}" oninput="pickState.q=this.value;paint();setTimeout(()=>{const e=document.getElementById('pk-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)},0)"></div>
- <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='все'?(огр?(title==='Материалы изделия'?'Все материалы':'вся упаковка'):'все разделы'):esc(groupName(g))}</div>`).join('')}</div>
+ <div class="chips">${gs.map(g=>`<div class="chip ${g===pickState.group?'on':''}" onclick="pickState.group=${jq(g)};paint()">${g==='rec'?'Изделия':g==='все'?(огр?(title==='Материалы изделия'?'Все материалы':'вся упаковка'):'все разделы'):esc(groupName(g))}</div>`).join('')}</div>
  ${M?`<div class="row xs" style="margin-bottom:8px">
    <span class="mut">${выбраны.length?'Отмечено: '+выбраны.length:'Пока ничего не отмечено'}</span><span class="sp"></span>
    ${видимые.length?`<a onclick='pickAllShown(${JSON.stringify(видимые)})'>${всеОтмечены?'снять показанные':'отметить все показанные'}</a>`:''}
@@ -1071,7 +1115,7 @@ function pickRender(title){
   return `<div class="item ${on?'on':''}" ${нельзя?'style="opacity:.5"':`onclick="${M?`pickToggle(${jq(m.id)})`:`__pick(${jq(m.id)});back()`}"`}>
    <div class="row">${M?`<span class="ckb ${on?'on':''}">${on?'✓':''}</span>`:''}
    <div style="flex:1;min-width:0"><div class="t">${esc(m.n)}</div>
-   <div class="xs mut">${нельзя?esc(нельзя):esc(groupName(m.g))+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u)}</div></div>
+   <div class="xs mut">${нельзя?esc(нельзя):esc(m.__rec?m.c:groupName(m.g))+' · '+fmt(m.p,m.p<1?3:2)+' ₽/'+esc(m.u)}</div></div>
    ${нельзя?'<span class="tag">уже в изделии</span>':((+m.s||0)>0?`<span class="tag ok">${qfmt(m.s)} ${esc(m.u)}</span>`:'')}</div></div>`}).join('')||'<div class="empty">Ничего не найдено</div>'}</div>
  ${total>80?`<p class="xs mut" style="text-align:center;margin-top:10px">Показано 80 из ${total} — уточните поиск</p>`:''}
  ${M?`<div class="pickbar"><button class="btn full" ${выбраны.length?'':'disabled'} onclick="pickDone()">${esc(O.btn||'Добавить в изделие')}${выбраны.length?' ('+выбраны.length+')':''}</button></div>`
@@ -1207,14 +1251,16 @@ function lineHtml(x){
  return `<div class="lrow"><div ${act?`onclick="${act}" style="cursor:pointer"`:''}>
   <div class="n2">${esc(nice(x.lb))}</div>
   <div class="s2">${esc(x.name||'—')}${x.q!=null?` · ${qfmt(x.q)} ${esc(x.unit||'')}`:''}</div></div>
-  <div style="text-align:right">${x.up!=null&&x.mid?`<a class="prc num" onclick="event.stopPropagation();editPrice(${jq(x.mid)})">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</a>`:''}
+  <div style="text-align:right">${x.up!=null&&x.mid?(/^(rec|fg)::/.test(x.mid)&&!MAT(x.mid)?`<span class="prc num">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</span>`:`<a class="prc num" onclick="event.stopPropagation();editPrice(${jq(x.mid)})">${fmt(x.up,x.up<1?3:2)} ₽/${esc(x.unit)}</a>`):''}
   <div class="c2">${x.c?fmt(x.c,2)+' ₽':'—'}</div></div></div>`}
 function saveDraft(){const L=curList(),i=L.findIndex(x=>x.id===Did);L[i]=JSON.parse(JSON.stringify(D));save();toast('Сохранено');paint()}
 function dupRecipe(){const c=JSON.parse(JSON.stringify(D));c.id='r'+Date.now();c.n=D.n+' (копия)';delete c.xl;
  curList().push(c);save();toast('Копия создана');openRecipe(c.id,Dcalc)}
 function resetRecipe(){if(!confirm('Вернуть состав, как он был в Excel? Все ваши правки этого изделия пропадут.'))return;
  D=JSON.parse(JSON.stringify(seedOf(Did)));saveDraft();toast('Возвращён исходный состав')}
-function delRecipe(){if(!confirm((Dcalc?'Удалить расчёт «':'Удалить изделие «')+D.n+'»?'))return;
+function delRecipe(){
+ const где=Dcalc?[]:[...S.recipes,...calcs()].filter(x=>x.id!==Did&&(x.l||[]).some(l=>recIdOf(l.m)===Did||l.m==='fg::'+Did)).map(x=>x.n);
+ if(!confirm((Dcalc?'Удалить расчёт «':'Удалить изделие «')+D.n+'»?'+(где.length?'\n\nОно входит в состав: '+где.slice(0,5).join(', ')+(где.length>5?' и ещё '+(где.length-5):'')+'.':'')))return;
  if(Dcalc)S.calcs=calcs().filter(x=>x.id!==Did);else S.recipes=S.recipes.filter(x=>x.id!==Did);
  save();cloudFlush();closeAll();toast('Удалено')}
 /* Расчёт → настоящее изделие: копия со всем составом; сам расчёт остаётся в «Калькуляторе». */
@@ -1237,6 +1283,17 @@ function addLine(k){
   let row=Math.max(0,...D.l.map(l=>l.r));
   let первая=null;
   for(const id of ids){
+   const rid0=recIdOf(id);
+   if(rid0){
+    /* заготовка: со склада, если она там есть, иначе из состава */
+    const sr=REC(rid0); if(!sr)continue;
+    const f=MAT('fg::'+rid0), иду=f&&stockOf(f)>0;
+    row++;
+    D.l.push({r:row, lb:sr.n, g:иду?f.g:'rec', m:иду?f.id:id,
+              q:{type:'const',value:1}, fp:0, cf:'mul'});
+    if(первая==null)первая=row;
+    continue;
+   }
    const m=MAT(id); if(!m)continue;
    row++;
    D.l.push({r:row, lb:упак?'упаковка':'материал', g:m.g, m:id,
@@ -1246,7 +1303,7 @@ function addLine(k){
   save();
   if(ids.length===1&&первая!=null){editLine(первая);toast('Добавлено — укажите количество')}
   else {paint();toast('Добавлено позиций: '+ids.length+' — укажите количество в каждой')}
- },{groups:группы, hint:упак?'Коробки, ленты, открытки — отметьте всё, что идёт с изделием'
+ },{groups:группы, withRecs:!упак, hint:упак?'Коробки, ленты, открытки — отметьте всё, что идёт с изделием'
                           :'Отметьте все материалы сразу — количество укажете потом',
     btn:'Добавить в изделие'});
 }
@@ -1303,8 +1360,34 @@ function otherView(kind,row){
  return head('Расход')+'<div class="wrap"><div class="empty">Строка не найдена</div></div>'}
 function e_set(row,f,v){const e=D.en.find(x=>x.r===row);e[f]=parseFloat(v)||0;paint()}
 function t_set(row,f,v){const t=D.tl.find(x=>x.r===row);t[f]=(f==='v')?(parseFloat(v)||0):v;paint()}
+/* Строка-заготовка: два режима — «Из состава» (m='rec::id') и «Со склада» (m='fg::id'). */
+function recLineView(row,l){
+ const rid=String(l.m).split('::')[1], sub=REC(rid), q=l.q||{type:'const',value:1};
+ const f=MAT('fg::'+rid), есть=f?stockOf(f):0, склад=String(l.m).startsWith('fg::');
+ return head(nice(l.lb),D.n)+`<div class="wrap" style="padding-top:12px"><div class="card">
+  <label class="f"><span>Что это в изделии</span><input id="e-lb" value="${esc(nice(l.lb))}" onchange="D.l.find(x=>x.r===${row}).lb=this.value.trim()||'строка'"></label>
+  <div class="item" style="margin-bottom:12px"><div class="row"><div style="flex:1;min-width:0">
+   <div class="t">${sub?esc(sub.n):'изделие не найдено'}</div>
+   ${sub?`<div class="xs mut">${esc(sub.c)} · ${fmt(calc(sub).cost,2)} ₽/шт</div>`:''}</div></div></div>
+  <div class="grid2" style="margin-bottom:12px">
+   <button class="btn ${склад?'g':''}" onclick="setRecMode(${row},'rec')">Из состава</button>
+   <button class="btn ${склад?'':'g'}" ${есть>0||склад?'':'disabled style="opacity:.5"'} onclick="setRecMode(${row},'fg')">Со склада</button></div>
+  <label class="f"><span>Количество, шт</span>
+   <input type="number" step="any" value="${q.value??1}" onchange="D.l.find(x=>x.r===${row}).q={type:'const',value:parseFloat(this.value)||0};paint()"></label>
+  <div class="grid2"><button class="btn" onclick="back()">Готово</button>
+  <button class="btn d" onclick="delLine(${row})">Удалить строку</button></div>
+ </div></div>`}
+function setRecMode(row,mode){
+ const L=D.l.find(x=>x.r===row); if(!L)return;
+ const rid=String(L.m).split('::')[1];
+ if(mode==='fg'){
+  const f=MAT('fg::'+rid); if(!f||!(stockOf(f)>0))return;
+  L.m=f.id; L.g=f.g;
+ } else { L.m='rec::'+rid; L.g='rec'; }
+ L.fp=null; paint()}
 function lineView(row){
  const l=D.l.find(x=>x.r===row); if(!l)return head('Строка')+'<div class="wrap"><div class="empty">Строка не найдена</div></div>';
+ if(/^(rec|fg)::/.test(l.m||''))return recLineView(row,l);
  const m=l.m?MAT(l.m):null, q=l.q||{type:'const',value:1};
  let cur='const';
  if(q.type==='param')cur='p:'+q.key; else if(q.type==='pct')cur=(q.base==='gypsum'?'%gypsum':'%waxNet_A');
@@ -1505,7 +1588,7 @@ function matView(id){
   <label class="f"><span>Предупреждать, когда остаток ниже</span><input id="m-min" type="number" step="any" value="${m.min||0}"></label>
   ${m.g==='gypsum'?`<label class="f"><span>Коэффициент смеси</span>
     <input id="m-coef" type="number" step="0.01" value="${(m.x&&m.x.coef)||1.65}"></label>
-   <label class="f"><span>Вода, % от массы гипса</span>
+   <label class="f"><span>Вода, % от массы смеси</span>
     <input id="m-water" type="number" step="any" value="${(m.x&&m.x.water!=null)?m.x.water:25}"></label>
    <label class="f"><span>Диоксид титана, % от массы гипса</span>
     <input id="m-tio2" type="number" step="any" value="${(m.x&&m.x.tio2)||0}"></label>
@@ -1514,6 +1597,7 @@ function matView(id){
    <label class="f"><span>Краситель, % от массы гипса</span>
     <input id="m-dye" type="number" step="any" value="${(m.x&&m.x.dye)||0}"></label>`:''}
   <button class="btn full" onclick="matSave(${jq(id)})">Сохранить</button>
+  <button class="btn g full" style="margin-top:10px" onclick="dupMat(${jq(id)})">Сделать копию</button>
  </div>
  <div class="card"><h3 class="sm" style="margin-bottom:8px">Используется в изделиях: ${used.length}</h3>
   ${used.length?used.slice(0,40).map(r=>`<div class="row sm" style="padding:5px 0"><span>${esc(r.n)}</span><span class="sp"></span>
@@ -1605,6 +1689,13 @@ function matSave(id){const m=MAT(id);
   const ms=parseFloat(g('m-svv').value); m.x.svv=isFinite(ms)&&ms>=0?ms:0;
   const md=parseFloat(g('m-dye').value); m.x.dye=isFinite(md)&&md>=0?md:0}
  syncStock(m); save();toast('Сохранено');back()}
+function dupMat(id){const m=MAT(id); if(!m)return;
+ const c=JSON.parse(JSON.stringify(m));
+ c.n=m.n+' (копия)';
+ c.id='usr::'+Date.now()+'::'+c.n;
+ c.s=0; c.lots=[];
+ S.materials.push(c); syncStock(c); save(); render();
+ stack.pop(); openMat(c.id); toast('Копия создана')}
 function delMat(id){if(!confirm('Удалить материал?'))return;S.materials=S.materials.filter(m=>m.id!==id);save();back();toast('Удалён')}
 const UNITS=['г','кг','мл','л','см','м','шт','исп.'];
 const BASE_UNITS=['г','мл','см','шт','исп.'];
@@ -1634,7 +1725,7 @@ function newMatView(){
   <div id="n-gyps" style="${groupKeys()[0]==='gypsum'?'':'display:none'}">
    <label class="f"><span>Коэффициент смеси</span>
     <input id="n-coef" type="number" step="0.01" value="1.65"></label>
-   <label class="f"><span>Вода, % от массы гипса</span>
+   <label class="f"><span>Вода, % от массы смеси</span>
     <input id="n-water" type="number" step="any" value="25"></label>
    <label class="f"><span>Диоксид титана, % от массы гипса</span>
     <input id="n-tio2" type="number" step="any" value="0"></label>
@@ -1984,7 +2075,7 @@ const HELP=[
  ['Воск, отдушка и гипс: массы', `
   <b>Воск.</b> Масса заливки = объём формы × 0,95, округляется до целого грамма. Из неё вычитается отдушка, остаток — чистый воск. Так воск и отдушка всегда дают в сумме ровно массу заливки: ни потерянного, ни лишнего грамма.<br><br>
   <i>Пример.</i> Форма 280 мл, отдушка 10 % → заливка 266 г, воск 242 г, отдушка 24 г.<br><br>
-  <b>Гипс.</b> Масса = коэффициент смеси × объём формы. Коэффициент указан в карточке материала: СКУЛЬПТОР 1,65, жидкая керамика 1,75, фрипласт 1,8, акрил 1,95. Вода — 25 % от массы гипса, в стоимость не входит.<br><br>
+  <b>Гипс.</b> Масса = коэффициент смеси × объём формы. Коэффициент указан в карточке материала: СКУЛЬПТОР 1,65, жидкая керамика 1,75, фрипласт 1,8, акрил 1,95. Вода — 25 % от массы смеси, в стоимость не входит.<br><br>
   Округление до целых граммов не случайно: на весах дробей не бывает, мастер отвешивает граммы.`],
 
  ['Упаковка', `
